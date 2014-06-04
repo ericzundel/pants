@@ -97,4 +97,3 @@ jar_library(name = 'jar-tool',
             jars = [
               jar(org = 'com.twitter.common', name = 'jar-tool', rev = '0.1.4')
             ])
-
