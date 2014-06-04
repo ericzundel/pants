@@ -81,6 +81,8 @@ class JavaCompile(JvmCompile):
     else:
       self._javac_opts.extend(context.config.getlist('java-compile', 'javac_args', default=[]))
 
+    self._javac_opts = context.config.getlist('jmake', 'javac_args', self._javac_opts)
+
   def create_analysis_tools(self):
     return AnalysisTools(self.context, JMakeAnalysisParser(self._classes_dir), JMakeAnalysis)
 
@@ -125,8 +127,8 @@ class JavaCompile(JvmCompile):
       '-jcpath', ':'.join(compiler_classpath),
       '-jcmainclass', 'com.twitter.common.tools.Compiler',
       ])
-    args.extend(map(lambda arg: '-C%s' % arg, self._javac_opts))
 
+    args.extend(map(lambda arg: '-C%s' % arg, self._javac_opts))
     args.extend(self._args)
     args.extend(sources)
     result = self.runjava(classpath=jmake_classpath,
