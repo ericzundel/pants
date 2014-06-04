@@ -79,7 +79,9 @@ class JavaCompile(JvmCompile):
       for arg in context.options.java_compile_args:
         self._javac_opts.extend(shlex.split(arg))
     else:
-      self._javac_opts.extend(context.config.getlist('jmake', 'javac_args', default=[]))
+      self._javac_opts.extend(context.config.getlist('java-compile', 'javac_args', default=[]))
+
+    self._javac_opts = context.config.getlist('jmake', 'javac_args', self._javac_opts)
 
   def create_analysis_tools(self):
     return AnalysisTools(self.context, JMakeAnalysisParser(self._classes_dir), JMakeAnalysis)
