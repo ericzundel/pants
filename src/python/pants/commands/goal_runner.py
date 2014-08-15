@@ -23,6 +23,7 @@ from pants.backend.core.tasks.task import QuietTaskMixin, Task
 from pants.backend.jvm.tasks.nailgun_task import NailgunTask  # XXX(pl)
 from pants.base.build_environment import get_buildroot
 from pants.base.build_file import BuildFile
+from pants.base.build_graph import MissingAddressError
 from pants.base.cmd_line_spec_parser import CmdLineSpecParser
 from pants.base.config import Config
 from pants.base.rcfile import RcFile
@@ -81,7 +82,7 @@ class GoalRunner(Command):
                ' If this is incorrect, disambiguate it with the "--" argument to separate goals'
                ' from targets.')
         logger.warning(msg.format(spec=spec))
-      except IOError: pass # Awesome, it's unambiguous.
+      except MissingAddressError: pass # Awesome, it's unambiguous.
       return False
 
     for i, arg in enumerate(args):

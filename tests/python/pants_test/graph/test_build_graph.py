@@ -7,15 +7,15 @@ from __future__ import (nested_scopes, generators, division, absolute_import, wi
 
 from contextlib import contextmanager
 import os
-import sys
 from textwrap import dedent
 
 import pytest
 
 from pants.base.address import SyntheticAddress
 from pants.base.build_configuration import BuildConfiguration
+from pants.base.build_file import BuildFile
 from pants.base.build_file_parser import BuildFileParser
-from pants.base.build_graph import BuildGraph
+from pants.base.build_graph import BuildGraph, MissingAddressError
 from pants.base.build_root import BuildRoot
 from pants.base.target import Target
 from pants.util.contextutil import pushd, temporary_dir
@@ -201,4 +201,51 @@ class BuildGraphTest(BaseTest):
     assertWalk([c, b, a], c)
     d = self.make_target('d', dependencies=[a, c])
     assertWalk([d, a, c, b], d)
+
+  def test_invalid_address(self):
+    self.add_to_build_file('BUILD',
+                           'dependencies(name="a", '
+                           '  dependencies=["non-existent-path:b"],'
+                           ')')
+    with self.assertRaisesRegexp(MissingAddressError,
+                                 '^BUILD file does not exist at:.*/non-existent-path/BUILD'
+                                 '\s+referenced from :a$'):
+      self.build_graph.inject_spec_closure('//:a')
+
+  def test_invalid_address_two_hops(self):
+    self.add_to_build_file('BUILD',
+                           'dependencies(name="a", '
+                           '  dependencies=["goodpath:b"],'
+                           ')')
+    self.add_to_build_file('goodpath/BUILD',
+                           'dependencies(name="b", '
+                           '  dependencies=["non-existent-path/c"],'
+                           ')')
+    with self.assertRaisesRegexp(MissingAddressError,
+                                 '^Path to BUILD file does not exist at: .*/non-existent-path'
+                                 '\s+referenced from goodpath:b'
+                                 '\s+referenced from :a$'):
+      self.build_graph.inject_spec_closure('//:a')
+
+  def test_invalid_address_two_hops_same_file(self):
+    self.add_to_build_file('BUILD',
+                           'dependencies(name="a", '
+                           '  dependencies=["goodpath:b"],'
+                           ')')
+    self.add_to_build_file('goodpath/BUILD',
+                           'dependencies(name="b", '
+                           '  dependencies=[":c"],'
+                           ')\n'
+                           'dependencies(name="c", '
+                           '  dependencies=["non-existent-path:d"],'
+                           ')')
+    with self.assertRaisesRegexp(MissingAddressError,
+                                 '^BUILD file does not exist at:.*/non-existent-path/BUILD'
+                                 '\s+referenced from goodpath:c'
+                                 '\s+referenced from goodpath:b'
+                                 '\s+referenced from :a$'):
+      self.build_graph.inject_spec_closure('//:a')
+
+
+
 
