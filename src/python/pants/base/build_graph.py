@@ -16,6 +16,12 @@ from pants.base.address import SyntheticAddress
 
 logger = logging.getLogger(__name__)
 
+class MissingAddressError(Exception):
+  """Raised by other classes when an address can't be resolved so we can trap the error and
+     print a useful diagnostic.
+  """
+  pass
+
 
 class BuildGraph(object):
   """A directed acyclic graph of Targets and dependencies. Not necessarily connected.
@@ -296,29 +302,36 @@ class BuildGraph(object):
     target_addressable = mapper.resolve(address)
 
     self._addresses_already_closed.add(address)
-    dep_addresses = list(mapper.specs_to_addresses(target_addressable.dependency_specs,
-                                                   relative_to=address.spec_path))
-    for dep_address in dep_addresses:
-      self.inject_address_closure(dep_address)
+    try:
+      dep_addresses = list(mapper.specs_to_addresses(target_addressable.dependency_specs,
+                                                     relative_to=address.spec_path))
+      for dep_address in dep_addresses:
+        self.inject_address_closure(dep_address)
 
-    if not self.contains_address(address):
-      target = self.target_addressable_to_target(address, target_addressable)
-      self.inject_target(target, dependencies=dep_addresses)
-    else:
-      target = self.get_target(address)
+      if not self.contains_address(address):
+        target = self.target_addressable_to_target(address, target_addressable)
+        self.inject_target(target, dependencies=dep_addresses)
+      else:
+        target = self.get_target(address)
 
-    for traversable_spec in target.traversable_dependency_specs:
-      self.inject_spec_closure(spec=traversable_spec, relative_to=address.spec_path)
-      traversable_spec_target = self.get_target_from_spec(traversable_spec,
-                                                          relative_to=address.spec_path)
-      if traversable_spec_target not in target.dependencies:
-        self.inject_dependency(dependent=target.address,
-                               dependency=traversable_spec_target.address)
+      for traversable_spec in target.traversable_dependency_specs:
+        self.inject_spec_closure(spec=traversable_spec, relative_to=address.spec_path)
+
+        traversable_spec_target = self.get_target_from_spec(traversable_spec,
+                                                            relative_to=address.spec)
+        if traversable_spec_target not in target.dependencies:
+          self.inject_dependency(dependent=target.address,
+                                 dependency=traversable_spec_target.address)
+          target.mark_transitive_invalidation_hash_dirty()
+
+      for traversable_spec in target.traversable_specs:
+        self.inject_spec_closure(spec=traversable_spec, relative_to=address.spec_path)
         target.mark_transitive_invalidation_hash_dirty()
 
-    for traversable_spec in target.traversable_specs:
-      self.inject_spec_closure(spec=traversable_spec, relative_to=address.spec_path)
-      target.mark_transitive_invalidation_hash_dirty()
+    except MissingAddressError as e:
+      raise MissingAddressError("{message}\n  referenced from {spec}"
+                                .format(message=e, spec=address.spec))
+
 
   def inject_spec_closure(self, spec, relative_to=''):
     """Constructs a SyntheticAddress from `spec` and calls `inject_address_closure`.

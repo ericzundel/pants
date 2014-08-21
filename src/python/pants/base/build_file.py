@@ -13,6 +13,7 @@ import re
 
 from pex.interpreter import PythonIdentity
 from twitter.common.collections import OrderedSet
+from pants.base.build_graph import MissingAddressError
 
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class BuildFile(object):
 
-  class MissingBuildFileError(IOError):
+  class MissingBuildFileError(MissingAddressError):
     pass
 
   _BUILD_FILE_PREFIX = 'BUILD'
