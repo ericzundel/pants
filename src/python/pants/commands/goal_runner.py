@@ -177,7 +177,9 @@ class GoalRunner(Command):
 
     with self.run_tracker.new_workunit(name='setup', labels=[WorkUnit.SETUP]):
       # Bootstrap user goals by loading any BUILD files implied by targets.
-      spec_parser = CmdLineSpecParser(self.root_dir, self.address_mapper)
+      spec_excludes = self.config.getlist(Config.DEFAULT_SECTION, 'spec_excludes',
+                                          default=[os.path.abspath(self.config.getdefault('pants_workdir'))])
+      spec_parser = CmdLineSpecParser(self.root_dir, self.address_mapper, spec_excludes=spec_excludes)
       with self.run_tracker.new_workunit(name='parse', labels=[WorkUnit.SETUP]):
         for spec in specs:
           for address in spec_parser.parse_addresses(spec, fail_fast):
