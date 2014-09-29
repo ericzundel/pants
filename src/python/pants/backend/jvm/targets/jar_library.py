@@ -5,25 +5,26 @@
 from __future__ import (nested_scopes, generators, division, absolute_import, with_statement,
                         print_function, unicode_literals)
 
+
 from pants.backend.jvm.targets.jar_dependency import JarDependency
-from pants.base.payload import JarLibraryPayload
+from pants.base.payload import Payload
+from pants.base.payload_field import ExcludesField, JarsField
 from pants.base.target import Target
 
 
 class JarLibrary(Target):
   """A set of jars that may be depended upon."""
 
-  def __init__(self, jars=None, *args, **kwargs):
+  def __init__(self, payload=None, jars=None, **kwargs):
     """
-    :param string name: The name of this target, which combined with this
-      build file defines the :doc:`target address <target_addresses>`.
     :param jars: List of :ref:`jar <bdict_jar>`\s to depend upon.
-    :param dependencies: Other targets that this target depends on. If your
-       code ``import``\s code from other places, it depends on them.
-    :param exclusives: An optional map of exclusives tags. See :ref:`howto_check_exclusives` for details.
     """
-    payload = JarLibraryPayload(self.assert_list(jars, expected_type=JarDependency))
-    super(JarLibrary, self).__init__(payload=payload, *args, **kwargs)
+    payload = payload or Payload()
+    payload.add_fields({
+      'jars': JarsField(self.assert_list(jars, expected_type=JarDependency)),
+      'excludes': ExcludesField([]),
+    })
+    super(JarLibrary, self).__init__(payload=payload, **kwargs)
     self.add_labels('jars', 'jvm')
 
   @property

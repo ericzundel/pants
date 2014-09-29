@@ -38,16 +38,16 @@ class PythonBinary(PythonTarget):
                platforms=(),
                **kwargs):
     """
-    :param name: target name
-    :param source: the python source file that becomes this binary's __main__.
+    :param source: relative path to one python source file that becomes this
+      binary's __main__.
       If None specified, drops into an interpreter by default.
-    :param dependencies: Other targets that this target depends on.
-    :type dependencies: list of target specs
     :param string entry_point: the default entry point for this binary.  if None, drops into the entry
       point that is defined by source. Something like
       "pants.bin.pants_exe:main", where "pants.bin.pants_exe" is the package
       name and "main" is the function name (if ommitted, the module is
       executed directly, presuming it has a ``__main.py__``).
+    :param sources: Overridden by source. To specify more than one source file,
+      use a python_library and have the python_binary depend on that library.
     :param inherit_path: inherit the sys.path of the environment that this binary runs in
     :param zip_safe: whether or not this binary is safe to run in compacted (zip-file) form
     :param always_write_cache: whether or not the .deps cache of this PEX file should always
@@ -59,7 +59,6 @@ class PythonBinary(PythonTarget):
     :param compatibility: either a string or list of strings that represents
       interpreter compatibility for this target, using the Requirement-style format,
       e.g. ``'CPython>=3', or just ['>=2.7','<3']`` for requirements agnostic to interpreter class.
-    :param dict exclusives: An optional dict of exclusives tags. See :ref:`howto_check_exclusives` for details.
     """
 
     sources = [] if source is None else [source]
@@ -72,6 +71,7 @@ class PythonBinary(PythonTarget):
     if not isinstance(platforms, (list, tuple)) and not isinstance(platforms, Compatibility.string):
       raise TargetDefinitionException(self, 'platforms must be a list, tuple or string.')
 
+    # TODO(pl): Most if not all of these should live in payload fields
     self._entry_point = entry_point
     self._inherit_path = bool(inherit_path)
     self._zip_safe = bool(zip_safe)
@@ -112,8 +112,8 @@ class PythonBinary(PythonTarget):
   def entry_point(self):
     if self._entry_point:
       return self._entry_point
-    elif self.payload.sources:
-      assert len(self.payload.sources) == 1
+    elif self.payload.sources.source_paths:
+      assert len(self.payload.sources.source_paths) == 1
       entry_source = list(self.sources_relative_to_source_root())[0]
       return self._translate_to_entry_point(entry_source)
     else:

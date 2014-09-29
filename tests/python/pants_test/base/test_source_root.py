@@ -53,6 +53,15 @@ class SourceRootTest(unittest.TestCase):
     self.assertEquals(OrderedSet([TestTarget]), SourceRoot.types("tests"))
     self.assertEquals(OrderedSet(["tests"]), SourceRoot.roots(TestTarget))
 
+  def test_register_none(self):
+    self._assert_source_root_empty()
+
+    SourceRoot.register("tests", )
+    self.assertEquals({"tests": OrderedSet([])}, SourceRoot.all_roots())
+    self.assertEquals(OrderedSet([]), SourceRoot.types("tests"))
+    self.assertEquals("tests", SourceRoot.find(TestTarget("//tests/foo/bar:baz")))
+    self.assertEquals("tests", SourceRoot.find_by_path("tests/foo/bar"))
+
   def test_reset(self):
     self._assert_source_root_empty()
     SourceRoot.register("tests", TestTarget)
@@ -63,16 +72,12 @@ class SourceRootTest(unittest.TestCase):
     self._assert_source_root_empty()
 
   def test_here(self):
-
-    class MockParseContext(object):
-      def __init__(self):
-        self.rel_path = "mock/foo"
     target = TestTarget("//mock/foo/bar:baz")
     proxy = AddressableCallProxy(addressable_type=target.get_addressable_type(),
                                  build_file=None,
                                  registration_callback=None)
     self.assertEqual("mock/foo/bar", SourceRoot.find(target))
-    SourceRoot(MockParseContext()).here(proxy)
+    SourceRoot("mock/foo").here(proxy)
     self.assertEqual("mock/foo", SourceRoot.find(target))
 
   def test_find(self):

@@ -142,10 +142,15 @@ class IdeGen(JvmBinaryTask, JvmToolTaskMixin):
     else:
       self.java_jdk = '1.%d' % self.java_language_level
 
-    self.gen_project_workdir = os.path.abspath(
-      self.context.options.ide_gen_project_dir or
-      os.path.join(self.workdir, self.__class__.__name__, self.project_name)
-    )
+    # Always tack on the project name to the work dir so each project gets its own linked jars,
+    # etc. See https://github.com/pantsbuild/pants/issues/564
+    if self.context.options.ide_gen_project_dir:
+      self.gen_project_workdir = os.path.abspath(
+        os.path.join(self.context.options.ide_gen_project_dir, self.project_name))
+    else:
+      self.gen_project_workdir = os.path.abspath(
+        os.path.join(self.workdir, self.__class__.__name__, self.project_name))
+
     self.cwd = (
       os.path.abspath(self.context.options.ide_gen_project_cwd) if
       self.context.options.ide_gen_project_cwd else self.gen_project_workdir
@@ -510,7 +515,7 @@ class Project(object):
     targeted = set()
 
     def relative_sources(target):
-      sources = target.payload.sources_relative_to_buildroot()
+      sources = target.payload.sources.relative_to_buildroot()
       return [os.path.relpath(source, target.target_base) for source in sources]
 
     def source_target(target):

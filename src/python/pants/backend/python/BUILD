@@ -9,6 +9,7 @@ python_library(
     'src/python/pants/backend/python/commands:pants_old',
     'src/python/pants/backend/python/targets:python',
     'src/python/pants/backend/python/tasks:python',
+    'src/python/pants/goal:task_registrar',
     ':all_utils',
   ]
 )
@@ -16,7 +17,6 @@ python_library(
 python_library(
   name = 'all_utils',
   dependencies = [
-    ':python_setup',
     ':antlr_builder',
     ':binary_builder',
     ':code_generator',
@@ -26,6 +26,7 @@ python_library(
     ':python_chroot',
     ':python_requirement',
     ':python_requirements',
+    ':python_setup',
     ':resolver',
     ':sdist_builder',
     ':test_builder',
@@ -116,6 +117,7 @@ python_library(
   sources = ['python_chroot.py'],
   dependencies = [
     ':antlr_builder',
+    ':python_requirement',
     ':python_setup',
     ':resolver',
     ':thrift_builder',

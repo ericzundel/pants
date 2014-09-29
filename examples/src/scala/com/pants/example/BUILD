@@ -2,11 +2,13 @@
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 scala_library(name = 'jvm-run-example-lib',
-  dependencies = [],
+  dependencies = [
+    'examples/src/scala/com/pants/example/hello/welcome',
+  ],
   sources = ['JvmRunExample.scala'],
   provides = artifact(org='com.pants.example',
                       name='jvm-example-lib',
-                      repo='build-support/ivy:public',)
+                      repo=public,)
 )
 
 jvm_binary(name ='jvm-run-example',
