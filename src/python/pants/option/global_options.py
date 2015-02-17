@@ -42,6 +42,8 @@ def register_global_options(register):
   register('--exclude-target-regexp', action='append', default=[], metavar='<regexp>',
            help='Regex pattern to exclude from the target list (useful in conjunction with ::). '
                 'Multiple patterns may be specified by setting this flag multiple times.')
+  register('--invalidation-report',
+           help='Write an CSV formatted report on the invalid objects to the specified path.')
   register('--read-from-artifact-cache', action='store_true', default=True,
            help='Read build artifacts from cache, if available.')
   register('--read-artifact-caches', type=Options.list,

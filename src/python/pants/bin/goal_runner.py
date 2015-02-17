@@ -23,6 +23,7 @@ from pants.base.build_graph import BuildGraph
 from pants.base.cmd_line_spec_parser import CmdLineSpecParser
 from pants.base.config import Config
 from pants.base.extension_loader import load_plugins_and_backends
+from pants.base.invalidation_report import InvalidationReportManager
 from pants.base.workunit import WorkUnit
 from pants.engine.round_engine import RoundEngine
 from pants.goal.context import Context
@@ -242,4 +243,7 @@ class GoalRunner(object):
       return 1
 
     engine = RoundEngine()
-    return engine.execute(context, self.goals)
+    result = engine.execute(context, self.goals)
+    InvalidationReportManager.report(self.global_options.invalidation_report)
+    return result
+

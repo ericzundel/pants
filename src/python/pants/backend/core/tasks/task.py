@@ -18,6 +18,7 @@ from twitter.common.lang import AbstractClass
 from pants.base.build_invalidator import BuildInvalidator, CacheKeyGenerator
 from pants.base.cache_manager import InvalidationCacheManager, InvalidationCheck
 from pants.base.exceptions import TaskError
+from pants.base.invalidation_report import InvalidationReportManager
 from pants.base.worker_pool import Work
 from pants.cache.artifact_cache import UnreadableArtifact, call_insert, call_use_cached_files
 from pants.cache.cache_setup import create_artifact_cache
@@ -294,6 +295,8 @@ class TaskBase(AbstractClass):
     cache_manager = self.create_cache_manager(invalidate_dependents,
                                               fingerprint_strategy=fingerprint_strategy)
 
+    InvalidationReportManager.start_task(self.__class__.__name__, cache_manager)
+
     # We separate locally-modified targets from others by coloring them differently.
     # This can be a performance win, because these targets are more likely to be iterated
     # over, and this preserves "chunk stability" for them.
@@ -345,9 +348,16 @@ class TaskBase(AbstractClass):
         self.context.log.info(*msg_elements)
 
     # Yield the result, and then mark the targets as up to date.
+    for vts in invalidation_check.all_vts:
+      InvalidationReportManager.add_vts(cache_manager, vts.targets, vts.cache_key, vts.valid,
+                                        phase='pre-check')
     yield invalidation_check
+    for vts in invalidation_check.all_vts:
+      InvalidationReportManager.add_vts(cache_manager, vts.targets, vts.cache_key, vts.valid,
+                                        phase='post-check')
     for vt in invalidation_check.invalid_vts:
       vt.update()  # In case the caller doesn't update.
+
 
   def check_artifact_cache_for(self, invalidation_check):
     """Decides which VTS to check the artifact cache for.

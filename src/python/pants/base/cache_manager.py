@@ -9,6 +9,7 @@ import sys
 
 from pants.base.build_graph import sort_targets
 from pants.base.build_invalidator import BuildInvalidator, CacheKeyGenerator
+from pants.base.invalidation_report import InvalidationReportManager
 from pants.base.target import Target
 
 
@@ -53,6 +54,8 @@ class VersionedTargetSet(object):
                                                            for vt in versioned_targets])
     self.num_chunking_units = self.cache_key.num_chunking_units
     self.valid = not cache_manager.needs_update(self.cache_key)
+    InvalidationReportManager.add_vts(cache_manager, self.targets, self.cache_key, self.valid,
+                                      phase='init')
 
   def update(self):
     self._cache_manager.update(self)
