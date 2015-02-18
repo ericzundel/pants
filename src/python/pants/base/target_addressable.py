@@ -2,10 +2,10 @@
 # Copyright 2014 Pants project contributors (see CONTRIBUTORS.md).
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-from __future__ import (nested_scopes, generators, division, absolute_import, with_statement,
-                        print_function, unicode_literals)
+from __future__ import (absolute_import, division, generators, nested_scopes, print_function,
+                        unicode_literals, with_statement)
 
-from twitter.common.lang import Compatibility
+from six import string_types
 
 from pants.base.addressable import Addressable
 from pants.base.exceptions import TargetDefinitionException
@@ -42,7 +42,7 @@ class TargetAddressable(Addressable):
     self.dependency_specs = self.kwargs.pop('dependencies', [])
 
     for dep_spec in self.dependency_specs:
-      if not isinstance(dep_spec, Compatibility.string):
+      if not isinstance(dep_spec, string_types):
         msg = ('dependencies passed to Target constructors must be strings.  {dep_spec} is not'
                ' a string.  Target type was: {target_type}.'
                .format(target_type=self.target_type, dep_spec=dep_spec))
