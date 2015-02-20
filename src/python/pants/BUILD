@@ -6,7 +6,8 @@ target(
   dependencies = [
     'src/python/pants/bin:pants',
   ],
-).with_description('An alias for the pants binary target.')
+  description = 'An alias for the pants binary target.',
+)
 
 python_library(
   name = 'pants-packaged',
@@ -81,8 +82,7 @@ python_library(
   sources = ['binary_util.py'],
   dependencies = [
     '3rdparty/python/twitter/commons:twitter.common.collections',
-    '3rdparty/python/twitter/commons:twitter.common.lang',
-    '3rdparty/python/twitter/commons:twitter.common.log',
+    '3rdparty/python:six',
     'src/python/pants/base:config',
     'src/python/pants/base:exceptions',
     'src/python/pants/util:contextutil',
