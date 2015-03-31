@@ -56,6 +56,35 @@ class PayloadField(AbstractClass):
     return self
 
 
+class FingerprintedMixin(object):
+  """Mixin this value to make it suitable for passing to FingerprintedField."""
+
+  def fingerprint(self):
+    """Override this method.
+
+    :returns: a sha1 hexdigest hashing the contents of this structure."""
+    raise NotImplementedError
+
+
+class FingerprintedField(PayloadField):
+  class MustBeFingerprintedError(Exception):
+    """Raised when this field is initialized with the wrong kind of object."""
+    pass
+
+  def __init__(self, value):
+    if not isinstance(value, FingerprintedMixin):
+      raise self.MustBeFingerprintedError("value of type {} must mixin FingerprintedMixin"
+                                     .format(type(value).__name__))
+    self._value = value
+
+  def _compute_fingerprint(self):
+    return self._value.fingerprint()
+
+  @property
+  def value(self):
+    return self._value
+
+
 class SourcesField(PayloadField):
   """A PayloadField encapsulating specified sources."""
   def __init__(self, sources_rel_path, sources, ref_address=None):
