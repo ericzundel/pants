@@ -2,19 +2,19 @@
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 python_library(
-  name = 'base',
-  sources = ['test_base.py'],
+  name = 'task_test_base',
+  sources = ['task_test_base.py'],
   dependencies = [
     '3rdparty/python/twitter/commons:twitter.common.collections',
     'src/python/pants/backend/core/tasks:console_task',
     'src/python/pants/backend/core/tasks:task',
-    'src/python/pants/base:cmd_line_spec_parser',
     'src/python/pants/base:config',
+    'src/python/pants/base:exceptions',
     'src/python/pants/base:target',
     'src/python/pants/goal:context',
     'src/python/pants/goal',
-    'tests/python/pants_test/base:context_utils',
     'tests/python/pants_test:base_test',
+    'tests/python/pants_test/base:context_utils',
   ]
 )
 
@@ -83,7 +83,7 @@ python_tests(
   name = 'builddict',
   sources = ['test_builddict.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core:plugin',
     'src/python/pants/backend/core/tasks:builddictionary',
     'src/python/pants/backend/core/tasks:reflect',
@@ -91,6 +91,7 @@ python_tests(
     'src/python/pants/backend/python:plugin',
     'src/python/pants/goal',
     'src/python/pants/goal:task_registrar',
+    'tests/python/pants_test:base_test',
   ]
 )
 
@@ -134,13 +135,13 @@ python_tests(
   name = 'reflect',
   sources = ['test_reflect.py'],
   dependencies = [
-    ':base',
     'src/python/pants/backend/core:plugin',
     'src/python/pants/backend/core/tasks:reflect',
     'src/python/pants/backend/jvm:plugin',
     'src/python/pants/backend/python:plugin',
     'src/python/pants/goal',
     'src/python/pants/goal:task_registrar',
+    'tests/python/pants_test:base_test',
   ]
 )
 
@@ -156,7 +157,7 @@ python_tests(
   name = 'cache_manager',
   sources = ['test_cache_manager.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'tests/python/pants_test/testutils',
     'src/python/pants/base:build_invalidator',
     'src/python/pants/base:cache_manager',
@@ -167,7 +168,7 @@ python_tests(
   name = 'check_published_deps',
   sources = ['test_check_published_deps.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/targets:common',
     'src/python/pants/backend/jvm:artifact',
     'src/python/pants/backend/jvm:repository',
@@ -182,7 +183,7 @@ python_tests(
   name = 'console_task',
   sources = ['test_console_task.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/tasks:console_task',
   ]
 )
@@ -191,7 +192,7 @@ python_tests(
   name = 'dependees',
   sources = ['test_dependees.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/codegen/targets:java',
     'src/python/pants/backend/core/targets:common',
     'src/python/pants/backend/core/tasks:dependees',
@@ -219,11 +220,11 @@ python_tests(
   name = 'detect_duplicates',
   sources = ['test_detect_duplicates.py'],
   dependencies = [
+    ':task_test_base',
     'src/python/pants/base:exceptions',
     'src/python/pants/backend/jvm/tasks:detect_duplicates',
     'src/python/pants/util:contextutil',
     'src/python/pants/util:dirutil',
-    'tests/python/pants_test:task_test_base',
   ],
 )
 
@@ -242,7 +243,7 @@ python_tests(
   name = 'filemap',
   sources = ['test_filemap.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/tasks:filemap',
     'src/python/pants/base:source_root',
     'src/python/pants/backend/python/targets:python',
@@ -254,7 +255,7 @@ python_tests(
   name = 'filter',
   sources = ['test_filter.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/jvm/targets:java',
     'src/python/pants/backend/python/targets:python',
     'src/python/pants/backend/core/tasks:filter',
@@ -318,7 +319,7 @@ python_tests(
   name = 'jar_create',
   sources = ['test_jar_create.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/android/targets:android',
     'src/python/pants/backend/codegen/targets:java',
     'src/python/pants/backend/core/targets:common',
@@ -329,7 +330,7 @@ python_tests(
     'src/python/pants/base:build_environment',
     'src/python/pants/base:build_file_aliases',
     'src/python/pants/base:source_root',
-    'src/python/pants/java:jar',
+    'src/python/pants/java/jar:manifest',
     'src/python/pants/util:contextutil',
     'src/python/pants/util:dirutil',
     'tests/python/pants_test/base:context_utils',
@@ -342,7 +343,7 @@ python_tests(
   sources = ['test_jar_publish.py'],
   dependencies = [
     '3rdparty/python:mock',
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/jvm/targets:java',
     'src/python/pants/backend/jvm/targets:jvm',
     'src/python/pants/backend/jvm/tasks:jar_publish',
@@ -351,6 +352,7 @@ python_tests(
     'src/python/pants/scm:scm',
     'src/python/pants/util:contextutil',
     'src/python/pants/util:dirutil',
+    'tests/python/pants_test/backend/jvm/tasks/jvm_compile:utils',
   ],
 )
 
@@ -358,7 +360,7 @@ python_tests(
   name = 'jar_publish_integration',
   sources = ['test_jar_publish_integration.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/util:contextutil',
     'tests/python/pants_test:int-test',
   ],
@@ -368,7 +370,7 @@ python_tests(
   name = 'list_goals',
   sources = ['test_list_goals.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/tasks:list_goals',
     'src/python/pants/backend/core/tasks:common',
     'src/python/pants/goal',
@@ -380,7 +382,7 @@ python_tests(
   name = 'listtargets',
   sources = ['test_listtargets.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/tasks:listtargets',
     'src/python/pants/backend/jvm:artifact',
     'src/python/pants/backend/jvm/targets:java',
@@ -394,7 +396,7 @@ python_tests(
   name = 'markdown_to_html',
   sources = ['test_markdown_to_html.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/tasks:markdown_to_html',
   ]
 )
@@ -417,7 +419,7 @@ python_tests(
   name = 'minimal_cover',
   sources = ['test_minimal_cover.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/core/tasks:minimal_cover',
     'src/python/pants/backend/python/targets:python',
     'src/python/pants/base:build_file_aliases',
@@ -445,7 +447,7 @@ python_tests(
   name = 'roots',
   sources = ['test_roots.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/base:build_environment',
     'src/python/pants/base:target',
     'src/python/pants/backend/core/targets:common',
@@ -457,7 +459,7 @@ python_tests(
   name = 'sorttargets',
   sources = ['test_sorttargets.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/python/targets:python',
     'src/python/pants/backend/core/tasks:sorttargets',
     'src/python/pants/base:build_file_aliases',
@@ -468,7 +470,7 @@ python_tests(
   name = 'targets_help',
   sources = ['test_targets_help.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/base:build_environment',
     'src/python/pants/base:target',
     'src/python/pants/backend/core/targets:common',
@@ -480,7 +482,7 @@ python_tests(
   name = 'what_changed',
   sources = ['test_what_changed.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/codegen/targets:java',
     'src/python/pants/backend/codegen/targets:python',
     'src/python/pants/backend/core/targets:common',
@@ -528,7 +530,7 @@ python_tests(
   name = 'jvm_run',
   sources = ['test_jvm_run.py'],
   dependencies = [
-    ':base',
+    ':task_test_base',
     'src/python/pants/backend/jvm/targets:jvm',
     'src/python/pants/backend/jvm/tasks:jvm_run',
     'src/python/pants/util:contextutil',
@@ -539,9 +541,9 @@ python_tests(
   name = 'jvm_task',
   sources = ['test_jvm_task.py'],
   dependencies = [
+    ':task_test_base',
     'src/python/pants/backend/jvm/tasks:jvm_task',
     'src/python/pants/util:dirutil',
-    'tests/python/pants_test:task_test_base',
   ]
 )
 
@@ -549,9 +551,9 @@ python_tests(
   name = 'jvmdoc_gen',
   sources = ['test_jvmdoc_gen.py'],
   dependencies = [
+    ':task_test_base',
     'src/python/pants/backend/jvm/tasks:jvmdoc_gen',
     'src/python/pants/util:dirutil',
-    'tests/python/pants_test:task_test_base',
   ]
 )
 

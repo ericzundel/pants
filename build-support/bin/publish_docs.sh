@@ -15,7 +15,7 @@ function usage() {
   echo " -h           print out this help message"
   echo " -o           open the doc site locally"
   echo " -p           publish the doc site remotely"
-  echo " -d           publish the site to a subdir at this path (useful for public previews)"
+  echo " -d  <dir>    publish the site to a subdir staging/<dir> (useful for public previews)"
 
   if (( $# > 0 )); then
     die "$@"
@@ -31,7 +31,7 @@ while getopts "hopd:" opt; do
     h) usage ;;
     o) preview="true" ;;
     p) publish="true" ;;
-    d) publish_path="${OPTARG}" ;;
+    d) publish_path="staging/${OPTARG}" ;;
     *) usage "Invalid option: -${OPTARG}" ;;
   esac
 done
@@ -54,7 +54,7 @@ function do_open() {
 # generate html from markdown pages.
 ${PANTS_EXE} markdown \
   --markdown-fragment src:: examples:: src/docs:: //:readme \
-  testprojects/src/java/com/pants/testproject/page:readme || \
+  testprojects/src/java/org/pantsbuild/testproject/page:readme || \
   die "Failed to generate HTML from markdown'."
 
 # invoke doc site generator.

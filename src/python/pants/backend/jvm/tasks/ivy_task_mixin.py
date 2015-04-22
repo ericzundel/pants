@@ -108,6 +108,17 @@ class IvyTaskMixin(object):
       if not invalidation_check.all_vts:
         return ([], set())
       global_vts = VersionedTargetSet.from_versioned_targets(invalidation_check.all_vts)
+
+      # If a report file is not present, we need to exec ivy, even if all the individual
+      # targets up to date... See https://rbcommons.com/s/twitter/r/2015
+      report_missing = False
+      report_confs = confs or ['default']
+      for conf in report_confs:
+        report_path = IvyUtils.xml_report_path(global_vts.targets, conf)
+        if not os.path.exists(report_path):
+          report_missing = True
+          break
+
       target_workdir = os.path.join(ivy_workdir, global_vts.cache_key.hash)
       target_classpath_file = os.path.join(target_workdir, 'classpath')
       raw_target_classpath_file = target_classpath_file + '.raw'
@@ -120,7 +131,7 @@ class IvyTaskMixin(object):
 
       # Note that it's possible for all targets to be valid but for no classpath file to exist at
       # target_classpath_file, e.g., if we previously built a superset of targets.
-      if invalidation_check.invalid_vts or not os.path.exists(raw_target_classpath_file):
+      if report_missing or invalidation_check.invalid_vts or not os.path.exists(raw_target_classpath_file):
         args = ['-cachepath', raw_target_classpath_file_tmp] + (custom_args if custom_args else [])
 
         self.exec_ivy(
@@ -133,8 +144,8 @@ class IvyTaskMixin(object):
             confs=confs)
 
         if not os.path.exists(raw_target_classpath_file_tmp):
-          raise TaskError('Ivy failed to create classpath file at %s'
-                          % raw_target_classpath_file_tmp)
+          raise TaskError('Ivy failed to create classpath file at {}'
+                          .format(raw_target_classpath_file_tmp))
         shutil.move(raw_target_classpath_file_tmp, raw_target_classpath_file)
         logger.debug('Moved ivy classfile file to {dest}'.format(dest=raw_target_classpath_file))
 
@@ -195,8 +206,8 @@ class IvyTaskMixin(object):
     mapdir = self.mapjar_workdir(target)
     safe_mkdir(mapdir, clean=True)
     ivyargs = [
-      '-retrieve', '%s/[organisation]/[artifact]/[conf]/'
-                   '[organisation]-[artifact]-[revision](-[classifier]).[ext]' % mapdir,
+      '-retrieve', '{}/[organisation]/[artifact]/[conf]/'
+                   '[organisation]-[artifact]-[revision](-[classifier]).[ext]'.format(mapdir),
       '-symlink',
     ]
     confs = maybe_list(target.payload.get_field_value('configurations') or [])
@@ -264,7 +275,7 @@ class IvyTaskMixin(object):
         result = execute_runner(runner, workunit_factory=self.context.new_workunit,
                                 workunit_name=workunit_name)
         if result != 0:
-          raise TaskError('Ivy returned %d' % result)
+          raise TaskError('Ivy returned {}'.format(result))
       except runner.executor.Error as e:
         raise TaskError(e)
 

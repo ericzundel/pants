@@ -7,7 +7,8 @@ from __future__ import (absolute_import, division, generators, nested_scopes, pr
 
 import logging
 
-from pants.backend.jvm.targets.jvm_binary import JvmApp, JvmBinary
+from pants.backend.jvm.targets.jvm_app import JvmApp
+from pants.backend.jvm.targets.jvm_binary import JvmBinary
 from pants.backend.jvm.tasks.jvm_task import JvmTask
 from pants.base.exceptions import TaskError
 from pants.base.workunit import WorkUnit
@@ -107,5 +108,5 @@ class JvmRun(JvmTask):
         with safe_open(expand_path(self.only_write_cmd_line), 'w') as outfile:
           outfile.write(' '.join(executor.cmd))
       elif result != 0:
-        raise TaskError('java %s ... exited non-zero (%i)' % (binary.main, result),
+        raise TaskError('java {} ... exited non-zero ({})'.format(binary.main, result),
                         exit_code=result)

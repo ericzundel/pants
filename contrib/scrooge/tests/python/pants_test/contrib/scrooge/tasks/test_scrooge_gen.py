@@ -19,14 +19,14 @@ from pants.base.exceptions import TaskError
 from pants.goal.context import Context
 from pants.util.dirutil import safe_rmtree
 from pants_test.base.context_utils import create_options
-from pants_test.tasks.test_base import TaskTest
+from pants_test.tasks.task_test_base import TaskTestBase
 from twitter.common.collections import OrderedSet
 
 from pants.contrib.scrooge.tasks.scrooge_gen import ScroogeGen
 
 
 # TODO (tdesai) Issue-240: Use JvmToolTaskTestBase for ScroogeGenTest
-class ScroogeGenTest(TaskTest):
+class ScroogeGenTest(TaskTestBase):
   @classmethod
   def task_type(cls):
     return ScroogeGen
@@ -80,7 +80,7 @@ class ScroogeGenTest(TaskTest):
       ScroogeGen._validate(options, [self.target('test_validate:three')])
 
   def test_smoke(self):
-    contents = dedent('''namespace java com.pants.example
+    contents = dedent('''namespace java org.pantsbuild.example
       struct Example {
       1: optional i64 number
       }
@@ -98,16 +98,15 @@ class ScroogeGenTest(TaskTest):
     '''))
 
     target = self.target('test_smoke:a')
-    task = self.prepare_task(build_graph=self.build_graph,
-                             targets=[target],
-                             build_file_parser=self.build_file_parser)
+    context = self.context(target_roots=[target])
+    task = self.create_task(context)
 
     with patch('pants.contrib.scrooge.tasks.scrooge_gen.calculate_services'):
       task._outdir = MagicMock()
       task._outdir.return_value = self.task_outdir
 
       task.gen = MagicMock()
-      sources = [os.path.join(self.task_outdir, 'com/pants/example/Example.scala')]
+      sources = [os.path.join(self.task_outdir, 'org/pantsbuild/example/Example.scala')]
       task.gen.return_value = {'test_smoke/a.thrift': sources}
 
       saved_add_new_target = Context.add_new_target

@@ -153,19 +153,48 @@ keep internal. You can put open-source things in `BUILD.oss` and internal things
 `BUILD.internal`. Pants "sees" both of these. When shipping open-source code, you can hold back
 the `BUILD.internal` file.
 
-Configure JVM Artifact Publishing
----------------------------------
+Configure JVM Artifact Downloads
+--------------------------------
 
-Pants uses `ivy` to publish artifacts. To specify where it should publish those artifacts,
-bring over a working `build-support/ivy/ivysettings.xml` file from a working Pants workspace
-and tweak to fit your situation. You can change the location of this file in `pants.ini`:
+Pants uses `ivy` to fetch libraries external to the repo (also called 3rdparty libraries).
+Ivy uses an XML configuration file.  Pants ships with an ivy configuration under
+`build-support/ivy/ivysettings.xml`.  For your repo, you will need to setup your own.  Here's a
+simple example to get you started:
 
-    :::ini
+    :::xml
+    <?xml version="1.0"?>
+
+    <ivysettings>
+
+      <settings defaultResolver="chain-repos"/>
+      <resolvers>
+        <chain name="chain-repos" returnFirst="true">
+          <ibiblio name="maven2"
+                   m2compatible="true"
+                   usepoms="true"
+                   root="https://repo1.maven.org/maven2/"/>
+
+          <!-- This is just for jvm tools used by Pants and not yet published to maven central. -->
+          <ibiblio name="pantsbuild-maven-repo"
+                   m2compatible="true"
+                   usepoms="true"
+                   root="https://dl.bintray.com/pantsbuild/maven/"/>
+
+        </chain>
+      </resolvers>
+    </ivysettings>
+
+Note that the location of this file and the location of the `ivy.cache.dir` property in the
+`ivysettings.xml` file must match up with the ivy configuration in pants.  To modify these, update
+the following settings in `pants.ini`:
+
     [ivy]
-    ivy_settings: some/other/path/ivysettings.xml
+    ivy_settings: %(pants_supportdir)s/ivy/ivysettings.xml
+    cache_dir: ~/.ivy2/pants
 
-If the `PANTS_IVY_SETTINGS_XML` environment variable is defined, Pants uses that value instead
-of the one in `pants.ini`.
+
+For more information on Ivy settings, see the [Ivy documentation](http://ant.apache.org/ivy/)
+
 
 Integrate New Tools via a Pants Plugin
 --------------------------------------
@@ -231,10 +260,10 @@ shown in
 
 `BUILD` targets can use this Repository's alias as the `repo` parameter to an <a
 pantsref="bdict_artifact">`artifact`</a>. For example,
-[examples/src/java/com/pants/examples/hello/greet/BUILD](https://github.com/pantsbuild/pants/blob/master/examples/src/java/com/pants/examples/hello/greet/BUILD)
+[examples/src/java/org/pantsbuild/example/hello/greet/BUILD](https://github.com/pantsbuild/pants/blob/master/examples/src/java/org/pantsbuild/example/hello/greet/BUILD)
 refers to the `public` repository defined above. (Notice it's a Python object, not a string.)
 
-!inc[start-at=java_library](../../examples/src/java/com/pants/examples/hello/greet/BUILD)
+!inc[start-at=java_library](../../examples/src/java/org/pantsbuild/example/hello/greet/BUILD)
 
 If you get an error that the repo name (here, `public`) isn't defined, your plugin didn't register
 with Pants successfully. Make sure you bootstrap Pants in a way that loads your `register.py`.
@@ -281,37 +310,36 @@ good place, and is used in the example above):
       password=netrc.getpassword)
 
 Next, tell Ivy how to publish to your repository. Add a new `ivysettings.xml` file to your repo
-(for example: '`build-support/ivy/ivysettings_for_publishing.xml`'). Here is an example file to get
-you started:
+with the additional information needed to publish artifacts. Here is an example to get you started:
 
-		<?xml version="1.0"?>
-		<!-- pants.ini forces this settings file to be loaded by Ivy, but only at
-		     publish time. -->
+   :::xml
+    <?xml version="1.0"?>
 
-		<ivysettings>
-		  <settings defaultResolver="chain-repos"/>
+    <ivysettings>
+      <settings defaultResolver="chain-repos"/>
 
-		  <include file="${ivy.settings.dir}/ivysettings.xml"/>
-
-		  <credentials host="artifactory.example.com"
-		               realm="Artifactory Realm"
+      <credentials host="artifactory.example.com"
+                   realm="Artifactory Realm"
                    <!-- These values come from a credentials() object, which is fed by '~/.netrc'.
                         There must be a '~/.netrc' machine entry which matches a resolver in the
                         "repos" object in 'pants.ini', which also matches the 'host' in this XML
                         block. -->
-		               username="${login}"
-		               passwd="${password}"/>
+                   username="${login}"
+                   passwd="${password}"/>
 
-		  <resolvers>
-		    <chain name="chain-repos" returnFirst="true">
-		      <_remote_resolvers name="remote-repos"/>
-		    </chain>
+      <resolvers>
+        <chain name="chain-repos" returnFirst="true">
+           <ibiblio name="corp-maven"
+                         m2compatible="true"
+                         usepoms="true"
+                         root="https://artifactory.example.com/content/groups/public/"/>
+        </chain>
 
-		    <url name="artifactory.example.com" m2compatible="true">
-		      <artifact pattern="https://artifactory.example.com/libs-releases-local/[organization]/[module]/[revision]/[module]-[revision](-[classifier]).[ext]"/>
-		    </url>
-		  </resolvers>
-		</ivysettings>
+        <url name="artifactory.example.com" m2compatible="true">
+          <artifact pattern="https://artifactory.example.com/libs-releases-local/[organization]/[module]/[revision]/[module]-[revision](-[classifier]).[ext]"/>
+        </url>
+      </resolvers>
+    </ivysettings>
 
 With this file in place, add a `[publish]` section to `pants.ini`, and tell pants to use
 the custom Ivy settings when publishing:
@@ -337,6 +365,8 @@ metadata -- code coverage info, source git repository, java version that created
 [[plugin|pants('src/python/pants/docs:howto_plugin')]], you give Pants a new ability. [[Develop a
 Task to Publish "Extra" Artifacts|pants('src/python/pants/docs:dev_tasks_publish_extras')]] to find
 out how to develop a special Task to include "extra" data with published artifacts.
+
+<a id="setup_cache"></a>
 
 Outside Caches
 --------------
@@ -381,6 +411,72 @@ If the user's `.netrc` has authentication information for the cache server[s], P
 (Thus, if only some users with known-good setups should be able to write to the cache, you might
 find it handy to use `.netrc` to authenticate those users.)
 
+Uploading Timing Stats
+----------------------
+
+Pants tracks information about its performance: what it builds, how much
+time various build operations take, cache hits, and more.
+If you you work with a large engineering organization, you might want to
+gather this information in one place, so it can inform decisions about how
+to improve everybody's build times.
+
+In everyone's `pants.ini` files, in the `[DEFAULT]` section, add a
+`stats_upload_url` line:
+
+    stats_upload_url: "http://myorg.org/pantsstats"
+
+Pants `POST`s reports to that URL. It's up to you to write a server to "listen"
+at that URL. A `POST` can have the following fields:
+
+`artifact_cache_stats`: Information about Pants' caching.
+[This "cache" refers to the place where Pants can store and fetch things it
+builds](#setup_cache) (not to be confused with the information it keeps in its working
+directory or the pre-built artifacts it fetches from PyPI or maven).
+This field is JSON. If Pants did *not* exercise its cache in a run, this might
+be an empty list "`[]`". If Pants *did* exercise its cache, this JSON might
+look like:
+
+    :::javascript
+    [{"num_hits": 2,
+      "hits": ["3rdparty:hamcrest-core", "3rdparty:junit"],
+      "num_misses": 1,
+      "cache_name": "default",
+      "misses": ["examples/tests/java/com/pants/examples/hello/greet"]}]
+
+`run_info`: Miscellaneous info about the Pants run: SCM status, build
+failure/success, etc. This is formatted as a JSON dictionary. It might look
+like:
+
+    :::javascript
+    {"timestamp": "1422901742.05",
+     "datetime": "Monday Feb 02, 2015 10:29:02",
+     "machine": "pogo-desktop",
+     "default_report": "/home/lahosken/src/lpants/.pants.d/reports/pants_run_2015_02_02_10_29_02_54/html/build.html",
+     "tag": "release_0.0.27-153-g7daeafc",
+     "user": "lahosken",
+     "branch": "cache_printf",
+     "path": "/home/lahosken/src/lpants",
+     "outcome": "SUCCESS",
+     "cmd_line": "./pants test examples/tests/java/com/pants/examples/hello::",
+     "id": "pants_run_2015_02_02_10_29_02_54",
+     "revision": "7daeafc8b40dc9bdad532195d510b8ed520aaa7c"}
+
+`self_timings`, `cumulative_timings`: Timing information about the stages of
+the build. These stages "nest". If stage1 invokes stage2, then the
+`cumulative_timings` for `stage1` include the `stage2` time, but the
+`self_timings` for `stage1` will not. Each of these fields is a JSON-encoded
+list of structures. The start of `cumulative_timings` might look like
+
+    :::javascript
+    [{"timing": 3.3389577865600586, "is_tool": false, "label": "main"},
+     {"timing": 2.929041862487793, "is_tool": false, "label": "background"},
+     {"timing": 1.560438871383667, "is_tool": false, "label": "main:test"},
+     {"timing": 1.479201078414917, "is_tool": false, "label": "main:test:junit"},
+     {"timing": 1.262120008468628, "is_tool": false, "label": "main:compile"},
+     {"timing": 1.118539810180664, "is_tool": true, "label": "main:test:junit:bootstrap-junit"},
+     {"timing": 0.7393410205841064, "is_tool": false, "label": "main:compile:checkstyle"},
+     {"timing": 0.7151470184326172, "is_tool": true, "label": "main:compile:checkstyle:checkstyle"},
+     ...
 
 Using Pants behind a firewall
 ------------
@@ -393,21 +489,6 @@ Pants may encounter issues running behind a firewall. Several components expect 
 * Python requirements
 
 
-### Ivy bootstrapper and tool bootstrapping
-
-Pants fetches the 'ivy' tool with an initial manual bootstrapping
-test.  You can  re-redirect this initial download to another URL with a setting in pants.ini:
-
-```
-[ivy]
-bootstrap_jar_url: https://proxy.corp.example.com/content/groups/public/org/apache/ivy/ivy/2.3.0/ivy-2.3.0.jar
-```
-
-You may also encounter issues downloading this .jar file if you are
-using self-signed SSL certificates. See the section on SSL
-certificates below.
-
-
 ### Configuring the Python requests library
 
 Code in bootstrapper.py and other parts of Pants use the Python
@@ -415,7 +496,7 @@ Code in bootstrapper.py and other parts of Pants use the Python
 download resources using http or https.  The first time you may
 encounter this is when Pants attempts to download an initial version
 of ivy.  If this initial download is through a proxy, the requests
-library uses the `HTTP_PROXY` or` HTTPS_PROXY` environment variable to
+library uses the `HTTP_PROXY` or `HTTPS_PROXY` environment variable to
 find the proxy server.
 
 ```
@@ -452,21 +533,36 @@ This variable should point to a file containing trusted certificates:
 export REQUESTS_CA_BUNDLE=/etc/certs/latest.pem
 ```
 
-### Using Ivy behind a firewall
+### Ivy bootstrapper and tool bootstrapping
 
 [Apache Ivy](http://ant.apache.org/ivy/) is used as a way to download
 the tools that Pants uses and for tool bootstrapper and external
-artifacts
+artifacts.
 
-After the initial bootstrapping of ivy, pants then invokes that
-version of ivy to re-bootstrap a new version of ivy.  Unlike the
-requests library, Ivy does not use the HTTP_PROXY environment
-variable, but instead relies on Java system properties.
-
-One way to do this is to override `jvm_options` in pants.ini:
+Pants fetches the Ivy tool with an initial manual bootstrapping
+step using the Python requests library.  If you do not want to use `HTTP_PROXY` or
+`HTTPS_PROXY` as described above, you can re-redirect this initial download to another
+URL with a setting in pants.ini:
 
 ```
-[bootstrap.bootstrap_jvm_tools] 
+[ivy]
+bootstrap_jar_url: https://proxy.corp.example.com/content/groups/public/org/apache/ivy/ivy/2.3.0/ivy-2.3.0.jar
+```
+
+You may also encounter issues downloading this .jar file if you are
+using self-signed SSL certificates. See the section on Configuring the Python requests library
+above.
+
+
+### Using Ivy with a proxy
+
+If you are using a version of pants 0.0.30 or greater, you can just set the `HTTP_PROXY` and
+`HTTPS_PROXY` environment variables and Pants will automatically configure the proxies for Ivy.
+If you are using an earlier version of pants, you must setup the system properties to
+Ivy.  One way to do this is in pants.ini:
+
+```
+[bootstrap.bootstrap_jvm_tools]
 jvm_options: [
     "-Dhttp.proxyHost=proxy.example.com",
     "-Dhttp.proxyPort=123",
@@ -485,7 +581,7 @@ If your site uses Sonotype Nexus or another reverse proxy for
 artifacts, you do not need to use a separate HTTP proxy.  Contact the
 reverse proxy administrator to setup a proxy for the sites listed in
 `build-support/ivy/settings.xml` and `pants.ini`.  Currently, these
-sites are `repo1.maven.org`, `maven.twttr.com`:
+sites are `https://repo1.maven.org/maven2/` and `https://dl.bintray.com/pantsbuild/maven/`:
 
 Here is an excerpt of a modified ivysettings.xml with some possible configurations:
 
@@ -531,3 +627,4 @@ indices: [
     "https://pypi.python.org/simple/"
   ]
 ```
+

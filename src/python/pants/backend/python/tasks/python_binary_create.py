@@ -8,7 +8,6 @@ from __future__ import (absolute_import, division, generators, nested_scopes, pr
 import os
 import time
 
-from pants.backend.python.python_chroot import PythonChroot
 from pants.backend.python.targets.python_binary import PythonBinary
 from pants.backend.python.tasks.python_task import PythonTask
 from pants.base.exceptions import TaskError
@@ -32,7 +31,7 @@ class PythonBinaryCreate(PythonTask):
       name = binary.name
       if name in names:
         raise TaskError('Cannot build two binaries with the same name in a single invocation. '
-                        '%s and %s both have the name %s.' % (binary, names[name], name))
+                        '{} and {} both have the name {}.'.format(binary, names[name], name))
       names[name] = binary
 
     for binary in binaries:
@@ -49,14 +48,6 @@ class PythonBinaryCreate(PythonTask):
     pexinfo = binary.pexinfo.copy()
     pexinfo.build_properties = build_properties
 
-    with self.temporary_pex_builder(pex_info=pexinfo, interpreter=interpreter) as builder:
-      chroot = PythonChroot(
-        context=self.context,
-        targets=[binary],
-        builder=builder,
-        platforms=binary.platforms,
-        interpreter=interpreter)
-
-      pex_path = os.path.join(self._distdir, '%s.pex' % binary.name)
-      chroot.dump()
-      builder.build(pex_path)
+    with self.temporary_chroot(interpreter=interpreter, pex_info=pexinfo, targets=[binary], platforms=binary.platforms) as chroot:
+      pex_path = os.path.join(self._distdir, '{}.pex'.format(binary.name))
+      chroot.builder.build(pex_path)

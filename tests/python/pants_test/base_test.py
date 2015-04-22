@@ -15,24 +15,28 @@ from textwrap import dedent
 from pants.backend.core.targets.dependencies import Dependencies
 from pants.base.address import SyntheticAddress
 from pants.base.build_configuration import BuildConfiguration
-from pants.base.build_environment import get_buildroot
 from pants.base.build_file import BuildFile
 from pants.base.build_file_address_mapper import BuildFileAddressMapper
 from pants.base.build_file_aliases import BuildFileAliases
 from pants.base.build_file_parser import BuildFileParser
 from pants.base.build_graph import BuildGraph
 from pants.base.build_root import BuildRoot
+from pants.base.cmd_line_spec_parser import CmdLineSpecParser
 from pants.base.config import Config
 from pants.base.exceptions import TaskError
 from pants.base.source_root import SourceRoot
 from pants.base.target import Target
 from pants.goal.goal import Goal
 from pants.goal.products import MultipleRootedProducts, UnionProducts
-from pants.util.contextutil import pushd, temporary_dir, temporary_file
+from pants.option.options import Options
+from pants.subsystem.subsystem import Subsystem
+from pants.util.contextutil import pushd, temporary_dir
 from pants.util.dirutil import safe_mkdir, safe_open, safe_rmtree, touch
 from pants_test.base.context_utils import create_context
 
 
+# TODO: Rename to 'TestBase', for uniformity, and also for logic: This is a baseclass
+# for tests, not a test of a thing called 'Base'.
 class BaseTest(unittest.TestCase):
   """A baseclass useful for tests requiring a temporary buildroot."""
 
@@ -111,12 +115,15 @@ class BaseTest(unittest.TestCase):
     Goal.clear()
     self.real_build_root = BuildRoot().path
     self.build_root = os.path.realpath(mkdtemp(suffix='_BUILD_ROOT'))
+    self.pants_workdir = os.path.join(self.build_root, '.pants.d')
+    safe_mkdir(self.pants_workdir)
     self.options = defaultdict(dict)  # scope -> key-value mapping.
     self.options[''] = {
-      'pants_workdir': os.path.join(self.build_root, '.pants.d'),
+      'pants_workdir': self.pants_workdir,
       'pants_supportdir': os.path.join(self.build_root, 'build-support'),
       'pants_distdir': os.path.join(self.build_root, 'dist'),
-      'cache_key_gen_version': '0-test'
+      'pants_configdir': os.path.join(self.build_root, 'config'),
+      'cache_key_gen_version': '0-test',
     }
     BuildRoot().path = self.build_root
 
@@ -132,27 +139,20 @@ class BaseTest(unittest.TestCase):
     self.address_mapper = BuildFileAddressMapper(self.build_file_parser)
     self.build_graph = BuildGraph(address_mapper=self.address_mapper)
 
-  def config(self, overrides=''):
-    """Returns a config valid for the test build root."""
-    ini_file = os.path.join(get_buildroot(), 'pants.ini')
-    if overrides:
-      with temporary_file(cleanup=False) as fp:
-        fp.write(overrides)
-        fp.close()
-        return Config.load([ini_file, fp.name])
-    else:
-      return Config.load([ini_file])
-
   def set_options_for_scope(self, scope, **kwargs):
     self.options[scope].update(kwargs)
 
-  def context(self, for_task_types=None, config='', options=None, target_roots=None, **kwargs):
+  def context(self, for_task_types=None, options=None, target_roots=None,
+              console_outstream=None, workspace=None):
     for_task_types = for_task_types or []
     options = options or {}
 
-    new_option_values = defaultdict(dict)
+    option_values = defaultdict(dict)
 
-    # Get values for all new-style options registered by the tasks in for_task_types.
+    registered_global_subsystems = set()
+
+    # Get default values for all options registered by the tasks in for_task_types.
+    # TODO: This is clunky and somewhat repetitive of the real registration code.
     for task_type in for_task_types:
       scope = task_type.options_scope
       if scope is None:
@@ -161,35 +161,58 @@ class BaseTest(unittest.TestCase):
       # We provide our own test-only registration implementation, bypassing argparse.
       # When testing we set option values directly, so we don't care about cmd-line flags, config,
       # env vars etc. In fact, for test isolation we explicitly don't want to look at those.
-      def register(*rargs, **rkwargs):
-        scoped_options = new_option_values[scope]
-        default = rkwargs.get('default')
-        if default is None and rkwargs.get('action') == 'append':
-          default = []
-        for flag_name in rargs:
-          option_name = flag_name.lstrip('-').replace('-', '_')
-          scoped_options[option_name] = default
+      def register_func(on_scope):
+        def register(*rargs, **rkwargs):
+          scoped_options = option_values[on_scope]
+          default = rkwargs.get('default')
+          if default is None and rkwargs.get('action') == 'append':
+            default = []
+          for flag_name in rargs:
+            option_name = flag_name.lstrip('-').replace('-', '_')
+            scoped_options[option_name] = default
+        # TODO: Set register.bootstrap here, for good measure?
+        register.scope = on_scope
+        return register
 
-      task_type.register_options(register)
+      task_type.register_options(register_func(scope))
+      for subsystem in task_type.global_subsystems():
+        if subsystem not in registered_global_subsystems:
+          subsystem.register_options(register_func(subsystem.qualify_scope(Options.GLOBAL_SCOPE)))
+          registered_global_subsystems.add(subsystem)
+      for subsystem in task_type.task_subsystems():
+        subsystem.register_options(register_func(subsystem.qualify_scope(scope)))
 
     # Now override with any caller-specified values.
 
     # TODO(benjy): Get rid of the options arg, and require tests to call set_options.
     for scope, opts in options.items():
       for key, val in opts.items():
-        new_option_values[scope][key] = val
+        option_values[scope][key] = val
 
     for scope, opts in self.options.items():
       for key, val in opts.items():
-        new_option_values[scope][key] = val
+        option_values[scope][key] = val
 
-    return create_context(config=self.config(overrides=config),
-                          options=new_option_values,
-                          target_roots=target_roots,
-                          build_graph=self.build_graph,
-                          build_file_parser=self.build_file_parser,
-                          address_mapper=self.address_mapper,
-                          **kwargs)
+    # Make inner scopes inherit option values from their enclosing scopes.
+    # Iterating in sorted order guarantees that we see outer scopes before inner scopes,
+    # and therefore only have to inherit from our immediately enclosing scope.
+    for scope in sorted(option_values.keys()):
+      if scope != Options.GLOBAL_SCOPE:
+        enclosing_scope = scope.rpartition('.')[0]
+        opts = option_values[scope]
+        for key, val in option_values.get(enclosing_scope, {}).items():
+          if key not in opts:  # Inner scope values override the inherited ones.
+            opts[key] = val
+
+    context = create_context(options=option_values,
+                             target_roots=target_roots,
+                             build_graph=self.build_graph,
+                             build_file_parser=self.build_file_parser,
+                             address_mapper=self.address_mapper,
+                             console_outstream=console_outstream,
+                             workspace=workspace)
+    Subsystem._options = context.options
+    return context
 
   def tearDown(self):
     BuildRoot().reset()
@@ -207,6 +230,22 @@ class BaseTest(unittest.TestCase):
     address = SyntheticAddress.parse(spec)
     self.build_graph.inject_address_closure(address)
     return self.build_graph.get_target(address)
+
+  def targets(self, spec):
+    """Resolves a target spec to one or more Target objects.
+
+    spec: Either BUILD target address or else a target glob using the siblings ':' or
+          descendants '::' suffixes.
+
+    Returns the set of all Targets found.
+    """
+
+    spec_parser = CmdLineSpecParser(self.build_root, self.address_mapper)
+    addresses = list(spec_parser.parse_addresses(spec))
+    for address in addresses:
+      self.build_graph.inject_address_closure(address)
+    targets = [self.build_graph.get_target(address) for address in addresses]
+    return targets
 
   def create_files(self, path, files):
     """Writes to a file under the buildroot with contents same as file name.

@@ -1,22 +1,38 @@
 target(
   name='tasks',
   dependencies=[
+    ':pytest_run',
     ':python_eval',
-    ':python_repl'
+    ':python_repl',
+    ':setup_py',
+  ]
+)
+
+python_library(
+  name='python_task_test',
+  sources=['python_task_test.py'],
+  dependencies=[
+    'src/python/pants/backend/python:plugin',
+    'src/python/pants/base:address',
+    'src/python/pants/base:build_file_aliases',
+    'src/python/pants/util:dirutil',
+    'tests/python/pants_test/tasks:task_test_base'
   ]
 )
 
 python_tests(
-  name='python_task_test',
-  sources=['python_task_test.py'],
+  name='pytest_run',
+  sources=['test_pytest_run.py'],
   dependencies=[
-    'src/python/pants/backend/python/targets:python',
-    'src/python/pants/base:address',
-    'src/python/pants/base:build_file_aliases',
-    'src/python/pants/util:dirutil',
-    'tests/python/pants_test/tasks:base'
+    ':python_task_test',
+    '3rdparty/python:coverage',
+    '3rdparty/python:pex',
+    'src/python/pants/backend/python:python_setup',
+    'src/python/pants/backend/python/tasks:python',
+    'src/python/pants/util:contextutil',
   ]
 )
+
 
 python_tests(
   name='python_eval',
@@ -45,4 +61,18 @@ python_tests(
     'src/python/pants/base:target',
     'src/python/pants/util:contextutil',
   ]
+)
+
+python_tests(
+  name='setup_py',
+  sources=['test_setup_py.py'],
+  dependencies=[
+    ':python_task_test',
+    '3rdparty/python/twitter/commons:twitter.common.collections',
+    '3rdparty/python/twitter/commons:twitter.common.dirutil',
+    '3rdparty/python:mock',
+    'src/python/pants/backend/python/tasks:python',
+    'src/python/pants/util:contextutil',
+    'src/python/pants/util:dirutil',
+  ],
 )

@@ -39,7 +39,7 @@ class ReverseDepmap(ConsoleTask):
     self._transitive = self.get_options().transitive
     self._closed = self.get_options().closed
     self._dependees_type = self.get_options().type
-    self._spec_excludes = self.context.options.for_global_scope().spec_excludes
+    self._spec_excludes = self.get_options().spec_excludes
 
 
   def console_output(self, _):
@@ -49,7 +49,7 @@ class ReverseDepmap(ConsoleTask):
       for dependees_type in self._dependees_type:
         target_aliases = self.context.build_file_parser.registered_aliases().targets
         if dependees_type not in target_aliases:
-          raise TaskError('Invalid type name: %s' % dependees_type)
+          raise TaskError('Invalid type name: {}'.format(dependees_type))
         target_type = target_aliases[dependees_type]
         # Try to find the SourceRoot for the given input type
         try:
@@ -59,9 +59,9 @@ class ReverseDepmap(ConsoleTask):
           pass
 
       if not base_paths:
-        raise TaskError('No SourceRoot set for any target type in %s.' % self._dependees_type +
+        raise TaskError('No SourceRoot set for any target type in {}.'.format(self._dependees_type) +
                         '\nPlease define a source root in BUILD file as:' +
-                        '\n\tsource_root(\'<src-folder>\', %s)' % ', '.join(self._dependees_type))
+                        '\n\tsource_root(\'<src-folder>\', {})'.format(', '.join(self._dependees_type)))
       for base_path in base_paths:
         buildfiles.update(BuildFile.scan_buildfiles(get_buildroot(),
                                                     os.path.join(get_buildroot(), base_path),

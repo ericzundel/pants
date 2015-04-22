@@ -13,6 +13,7 @@ from twitter.common.collections import OrderedSet
 
 from pants.backend.core.tasks.task import Task
 from pants.backend.python.interpreter_cache import PythonInterpreterCache
+from pants.backend.python.python_chroot import PythonChroot
 from pants.backend.python.python_setup import PythonRepos, PythonSetup
 from pants.base.exceptions import TaskError
 
@@ -65,9 +66,9 @@ class PythonTask(Task):
       unique_compatibilities = set(tuple(t.compatibility) for t in targets_with_compatibilities)
       unique_compatibilities_strs = [','.join(x) for x in unique_compatibilities if x]
       targets_with_compatibilities_strs = [str(t) for t in targets_with_compatibilities]
-      raise TaskError('Unable to detect a suitable interpreter for compatibilities: %s '
-                      '(Conflicting targets: %s)' % (' && '.join(unique_compatibilities_strs),
-                                                     ', '.join(targets_with_compatibilities_strs)))
+      raise TaskError('Unable to detect a suitable interpreter for compatibilities: {} '
+                      '(Conflicting targets: {})'.format(' && '.join(unique_compatibilities_strs),
+                                                         ', '.join(targets_with_compatibilities_strs)))
 
     # Return the lowest compatible interpreter.
     return self.interpreter_cache.select_interpreter(allowed_interpreters)[0]
@@ -79,13 +80,30 @@ class PythonTask(Task):
     if len(interpreters) != 1:
       raise TaskError('Unable to detect a suitable interpreter.')
     interpreter = interpreters[0]
-    self.context.log.debug('Selected %s' % interpreter)
+    self.context.log.debug('Selected {}'.format(interpreter))
     return interpreter
 
   @contextmanager
-  def temporary_pex_builder(self, interpreter=None, pex_info=None, parent_dir=None):
-    """Yields a PEXBuilder and cleans up its chroot when it goes out of context."""
-    path = tempfile.mkdtemp(dir=parent_dir)
+  def temporary_chroot(self, interpreter=None, pex_info=None, targets=None,
+                       extra_requirements=None, platforms=None, pre_freeze=None):
+    """Yields a temporary PythonChroot created with the specified args.
+
+    pre_freeze is an optional function run on the chroot just before freezing its builder,
+    to allow for any extra modification.
+    """
+    path = tempfile.mkdtemp()
     builder = PEXBuilder(path=path, interpreter=interpreter, pex_info=pex_info)
-    yield builder
-    builder.chroot().delete()
+    with self.context.new_workunit('chroot'):
+      chroot = PythonChroot(
+        context=self.context,
+        targets=targets,
+        extra_requirements=extra_requirements,
+        builder=builder,
+        platforms=platforms,
+        interpreter=interpreter)
+      chroot.dump()
+      if pre_freeze:
+        pre_freeze(chroot)
+      builder.freeze()
+    yield chroot
+    chroot.delete()

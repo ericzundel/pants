@@ -27,7 +27,6 @@ class JvmTarget(Target, Jarable):
                resources=None,
                configurations=None,
                no_cache=False,
-               build_graph=None,
                **kwargs):
     """
     :param configurations: One or more ivy configurations to resolve for this target.
@@ -40,18 +39,19 @@ class JvmTarget(Target, Jarable):
     :type sources: ``Fileset`` (from globs or rglobs) or list of strings
     :param no_cache: If True, this should not be stored in the artifact cache
     """
+    self.address = address  # Set in case a TargetDefinitionException is thrown early
     if sources_rel_path is None:
       sources_rel_path = address.spec_path
     payload = payload or Payload()
     payload.add_fields({
-      'sources': self.create_sources_field(sources, sources_rel_path, address, build_graph),
+      'sources': self.create_sources_field(sources, sources_rel_path, address),
       'provides': provides,
       'excludes': ExcludesField(self.assert_list(excludes, expected_type=Exclude)),
       'configurations': ConfigurationsField(self.assert_list(configurations)),
     })
     self._resource_specs = self.assert_list(resources)
 
-    super(JvmTarget, self).__init__(address=address, payload=payload, build_graph=build_graph,
+    super(JvmTarget, self).__init__(address=address, payload=payload,
                                     **kwargs)
     self.add_labels('jvm')
     if no_cache:

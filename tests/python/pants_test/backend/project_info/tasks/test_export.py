@@ -16,15 +16,16 @@ from pants.backend.jvm.targets.jar_dependency import JarDependency
 from pants.backend.jvm.targets.jar_library import JarLibrary
 from pants.backend.jvm.targets.java_library import JavaLibrary
 from pants.backend.jvm.targets.java_tests import JavaTests
-from pants.backend.jvm.targets.jvm_binary import JvmApp, JvmBinary
+from pants.backend.jvm.targets.jvm_app import JvmApp
+from pants.backend.jvm.targets.jvm_binary import JvmBinary
 from pants.backend.jvm.targets.jvm_target import JvmTarget
 from pants.backend.jvm.targets.scala_library import ScalaLibrary
 from pants.backend.project_info.tasks.export import Export
 from pants.base.exceptions import TaskError
-from pants_test.tasks.test_base import ConsoleTaskTest
+from pants_test.tasks.task_test_base import ConsoleTaskTestBase
 
 
-class ProjectInfoTest(ConsoleTaskTest):
+class ProjectInfoTest(ConsoleTaskTestBase):
   @classmethod
   def task_type(cls):
     return Export
@@ -59,6 +60,14 @@ class ProjectInfoTest(ConsoleTaskTest):
       dependencies=[jar_lib],
       java_sources=['java/project_info:java_lib'],
       sources=['com/foo/Bar.scala', 'com/foo/Baz.scala'],
+    )
+
+    self.make_target(
+      'project_info:globular',
+      target_type=ScalaLibrary,
+      dependencies=[jar_lib],
+      java_sources=['java/project_info:java_lib'],
+      sources=['com/foo/*.scala'],
     )
 
     self.make_target(
@@ -126,6 +135,30 @@ class ProjectInfoTest(ConsoleTaskTest):
     ))
     self.assertEqual({}, result['libraries'])
 
+  def test_sources(self):
+    result = get_json(self.execute_console_task(
+      options=dict(sources=True),
+      targets=[self.target('project_info:third')]
+    ))
+
+    self.assertEqual(
+      ['project_info/com/foo/Bar.scala',
+       'project_info/com/foo/Baz.scala',
+      ],
+      sorted(result['targets']['project_info:third']['sources'])
+    )
+
+  def test_source_globs(self):
+    result = get_json(self.execute_console_task(
+      options=dict(globs=True),
+      targets=[self.target('project_info:globular')]
+    ))
+
+    self.assertEqual(
+      {'globs' : ['project_info/com/foo/*.scala']},
+      result['targets']['project_info:globular']['globs']
+    )
+
   def test_with_dependencies(self):
     result = get_json(self.execute_console_task(
       targets=[self.target('project_info:third')]
@@ -145,7 +178,7 @@ class ProjectInfoTest(ConsoleTaskTest):
     source_root = result['targets']['project_info:third']['roots'][0]
     self.assertEqual('com.foo', source_root['package_prefix'])
     self.assertEqual(
-      '%s/project_info/com/foo' % self.build_root,
+      '{0}/project_info/com/foo'.format(self.build_root),
       source_root['source_root']
     )
 
@@ -162,6 +195,8 @@ class ProjectInfoTest(ConsoleTaskTest):
     ))
     jvm_target = result['targets']['project_info:jvm_target']
     expected_jmv_target = {
+      'globs': {'globs': ['project_info/this/is/a/source/Foo.scala',
+                          'project_info/this/is/a/source/Bar.scala']},
       'libraries': ['org.apache:apache-jar:12.12.2012'],
       'is_code_gen': False,
       'targets': ['project_info:jar_lib'],
@@ -175,6 +210,14 @@ class ProjectInfoTest(ConsoleTaskTest):
       'pants_target_type': 'scala_library'
     }
     self.assertEqual(jvm_target, expected_jmv_target)
+
+  def test_no_libraries(self):
+    result = get_json(self.execute_console_task(
+      options=dict(libraries=False),
+      targets=[self.target('project_info:java_test')]
+    ))
+    self.assertEqual([],
+                     result['targets']['project_info:java_test']['libraries'])
 
   def test_java_test(self):
     result = get_json(self.execute_console_task(
@@ -203,8 +246,8 @@ class ProjectInfoTest(ConsoleTaskTest):
 
   def test_format_flag(self):
     result = self.execute_console_task(
-      args=['--test-formatted'],
-      targets=[self.target('project_info:third')]
+      targets=[self.target('project_info:third')],
+      options={'formatted': False},
     )
     # confirms only one line of output, which is what -format should produce
     self.assertEqual(1, len(result))
@@ -219,14 +262,14 @@ class ProjectInfoTest(ConsoleTaskTest):
 
   def test_output_file(self):
     outfile = os.path.join(self.build_root, '.pants.d', 'test')
-    self.execute_console_task(args=['--test-output-file={}'.format(outfile)],
-                              targets=[self.target('project_info:target_type')])
+    self.execute_console_task(targets=[self.target('project_info:target_type')],
+                              options={'output_file': outfile})
     self.assertTrue(os.path.exists(outfile))
 
   def test_output_file_error(self):
     with self.assertRaises(TaskError):
-      self.execute_console_task(args=['--test-output-file={}'.format(self.build_root)],
-                                targets=[self.target('project_info:target_type')])
+      self.execute_console_task(targets=[self.target('project_info:target_type')],
+                                options={'output_file': self.build_root})
 
   def test_unrecognized_target_type(self):
     with self.assertRaises(TaskError):
