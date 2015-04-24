@@ -43,6 +43,9 @@ def is_java(target):
 
 class IdeGen(JvmToolTaskMixin, Task):
 
+  RESOURCES = "java-resource"
+  TEST_RESOURCES = "java-test-resource"
+
   @classmethod
   def register_options(cls, register):
     super(IdeGen, cls).register_options(register)
@@ -149,7 +152,7 @@ class IdeGen(JvmToolTaskMixin, Task):
     if self.get_options().java_jdk_name:
       self.java_jdk = self.get_options().java_jdk_name
     else:
-      self.java_jdk = '1.%d' % self.java_language_level
+      self.java_jdk = '1.{}'.format(self.java_language_level)
 
     # Always tack on the project name to the work dir so each project gets its own linked jars,
     # etc. See https://github.com/pantsbuild/pants/issues/564
@@ -238,9 +241,9 @@ class IdeGen(JvmToolTaskMixin, Task):
 
     self.jar_dependencies = jars
 
-    self.context.log.debug('pruned to cp:\n\t%s' % '\n\t'.join(
-      str(t) for t in self.context.targets())
-    )
+    self.context.log.debug('pruned to cp:\n\t{}'.format(
+      '\n\t'.join(str(t) for t in self.context.targets())
+    ))
 
   def map_internal_jars(self, targets):
     internal_jar_dir = os.path.join(self.gen_project_workdir, 'internal-libs')
@@ -256,7 +259,7 @@ class IdeGen(JvmToolTaskMixin, Task):
       if mappings:
         for base, jars in mappings.items():
           if len(jars) != 1:
-            raise IdeGen.Error('Unexpected mapping, multiple jars for %s: %s' % (target, jars))
+            raise IdeGen.Error('Unexpected mapping, multiple jars for {}: {}'.format(target, jars))
 
           jar = jars[0]
           cp_jar = os.path.join(internal_jar_dir, jar)
@@ -268,7 +271,7 @@ class IdeGen(JvmToolTaskMixin, Task):
             for base, jars in mappings.items():
               if len(jars) != 1:
                 raise IdeGen.Error(
-                  'Unexpected mapping, multiple source jars for %s: %s' % (target, jars)
+                  'Unexpected mapping, multiple source jars for {}: {}'.format(target, jars)
                 )
               jar = jars[0]
               cp_source_jar = os.path.join(internal_source_jar_dir, jar)
@@ -373,12 +376,13 @@ class ClasspathEntry(object):
 class SourceSet(object):
   """Models a set of source files."""
 
-  def __init__(self, root_dir, source_base, path, is_test):
+  def __init__(self, root_dir, source_base, path, is_test, content_type=''):
     """
     :param string root_dir: full path to the root of the project containing this source set
     :param string source_base: the relative path from root_dir to the base of this source set
     :param string path: relative path from the source_base to the base of the sources in this set
     :param bool is_test: true iff the sources contained by this set implement test cases
+    :param string content_type: Content type resources or test resources for scala/java project
     """
 
     self.root_dir = root_dir
@@ -386,6 +390,7 @@ class SourceSet(object):
     self.path = path
     self.is_test = is_test
     self._excludes = []
+    self.content_type = content_type
 
   @property
   def excludes(self):
@@ -405,6 +410,9 @@ class SourceSet(object):
 
   def __cmp__(self, other):
     return cmp(self._key_tuple, other._key_tuple)
+
+  def __hash__(self):
+    return hash(self._key_tuple)
 
 
 class Project(object):
@@ -454,7 +462,7 @@ class Project(object):
     self.targets = OrderedSet(targets)
     self.transitive = transitive
 
-    self.sources = []
+    self.sources = set()
     self.py_sources = []
     self.py_libs = []
     self.resource_extensions = set()
@@ -504,7 +512,7 @@ class Project(object):
                not (self.skip_scala and is_scala(target))))
       return result
 
-    def configure_source_sets(relative_base, sources, is_test):
+    def configure_source_sets(relative_base, sources, is_test, content_type=''):
       absolute_base = os.path.join(self.root_dir, relative_base)
       paths = set([os.path.dirname(source) for source in sources])
       for path in paths:
@@ -512,7 +520,15 @@ class Project(object):
         # Note, this can add duplicate source paths to self.sources().  We'll de-dup them later,
         # because we want to prefer test paths.
         targeted.add(absolute_path)
-        self.sources.append(SourceSet(self.root_dir, relative_base, path, is_test))
+        source_set = SourceSet(self.root_dir, relative_base, path, is_test, content_type)
+        if source_set in self.sources and content_type:
+         # Note, same resource can be added twice.
+         # 1. Once with the content_type attached with target.has_resources loop
+         # 2. Second without content_type from command line target.
+         # We do not want to skip resources in flow 2 as we can have resources on the command line
+         # which are not attached to any target.
+         self.sources.remove(source_set)
+        self.sources.add(source_set)
 
     def find_source_basedirs(target):
       dirs = set()
@@ -535,10 +551,15 @@ class Project(object):
         if target.has_resources:
           resources_by_basedir = defaultdict(set)
           for resources in target.resources:
-            resources_by_basedir[target.target_base].update(relative_sources(resources))
+            resources_by_basedir[resources.target_base].update(relative_sources(resources))
           for basedir, resources in resources_by_basedir.items():
             self.resource_extensions.update(Project.extract_resource_extensions(resources))
-            configure_source_sets(basedir, resources, is_test=target.is_test)
+            if target.is_test:
+              configure_source_sets(basedir, resources, is_test=target.is_test,
+                                    content_type=IdeGen.TEST_RESOURCES)
+            else:
+              configure_source_sets(basedir, resources, is_test=target.is_test,
+                                    content_type=IdeGen.RESOURCES)
 
         if target.has_sources():
           test = target.is_test
@@ -639,8 +660,8 @@ class Project(object):
     for target in self.targets:
       target.walk(lambda target: targets.add(target), source_target)
     targets.update(analyzed - targets)
-    self.sources.extend(SourceSet(get_buildroot(), p, None, False) for p in extra_source_paths)
-    self.sources.extend(SourceSet(get_buildroot(), p, None, True) for p in extra_test_paths)
+    self.sources.update(SourceSet(get_buildroot(), p, None, False) for p in extra_source_paths)
+    self.sources.update(SourceSet(get_buildroot(), p, None, True) for p in extra_test_paths)
     if self.use_source_root:
       self.sources = Project._collapse_by_source_root(self.sources)
     self.sources = dedup_sources(self.sources)

@@ -44,8 +44,8 @@ python_tests(
   name = 'test_thrift_namespace_packages',
   sources = ['test_thrift_namespace_packages.py'],
   dependencies = [
-    'testprojects/src/thrift/com/pants/testing:duck-py',
-    'testprojects/src/thrift/com/pants/testing:goose-py',
+    'testprojects/src/thrift/org/pantsbuild/testing:duck-py',
+    'testprojects/src/thrift/org/pantsbuild/testing:goose-py',
   ],
 )
 
@@ -101,25 +101,6 @@ python_tests(
     'src/python/pants/util:contextutil',
   ],
 )
-
-python_tests(
-  name = 'test_setup_py',
-  sources = ['test_setup_py.py'],
-  dependencies = [
-    '3rdparty/python/twitter/commons:twitter.common.collections',
-    '3rdparty/python/twitter/commons:twitter.common.dirutil',
-    '3rdparty/python:mock',
-    'src/python/pants/backend/core/targets:common',
-    'src/python/pants/backend/python:python_artifact',
-    'src/python/pants/backend/python/targets:python',
-    'src/python/pants/backend/python/tasks:python',
-    'src/python/pants/base:exceptions',
-    'src/python/pants/base:target',
-    'src/python/pants/util:contextutil',
-    'src/python/pants/util:dirutil',
-    'tests/python/pants_test:task_test_base',
-    ],
-  )
 
 # Used by interpreter_selection_integration.
 python_binary(

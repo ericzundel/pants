@@ -23,6 +23,7 @@ class ZincAnalysisParser(AnalysisParser):
   """Parses a zinc analysis file."""
 
   empty_test_header = 'products'
+  current_test_header = ZincAnalysis.FORMAT_VERSION_LINE
 
   def parse(self, infile):
     """Parse a ZincAnalysis instance from an open text file."""
@@ -87,11 +88,11 @@ class ZincAnalysisParser(AnalysisParser):
     if expected_header:
       line = lines_iter.next()
       if expected_header + ':\n' != line:
-        raise ParseError('Expected: "%s:". Found: "%s"' % (expected_header, line))
+        raise ParseError('Expected: "{}:". Found: "{}"'.format(expected_header, line))
     n = self.parse_num_items(lines_iter.next())
     relation = defaultdict(list)  # Values are lists, to accommodate relations.
     for i in range(n):
-      k, _, v = lines_iter.next().partition(' -> ')
+      k, _, v = lines_iter.next().decode('utf-8').partition(' -> ')
       if len(v) == 1:  # Value on its own line.
         v = lines_iter.next()
       relation[k].append(v[:-1])

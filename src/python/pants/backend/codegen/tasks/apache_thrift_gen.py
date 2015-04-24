@@ -32,7 +32,7 @@ INCLUDE_RE = re.compile(r'include (?:"(.*?)"|\'(.*?)\')')
 
 def _copytree(from_base, to_base):
   def abort(error):
-    raise TaskError('Failed to copy from %s to %s: %s' % (from_base, to_base, error))
+    raise TaskError('Failed to copy from {} to {}: {}'.format(from_base, to_base, error))
 
   # TODO(John Sirois): Consider adding a unit test and lifting this to common/dirutils or similar
   def safe_link(src, dst):
@@ -62,8 +62,12 @@ class ApacheThriftGen(CodeGen):
              help='Force generation of thrift code for these languages.')
     register('--strict', action='store_true',
              help='Run thrift compiler with strict warnings.')
-    register('--supportdir', advanced=True, help='Find thrift binaries under this dir.')
-    register('--version', advanced=True, help='Thrift compiler version.')
+    register('--supportdir', advanced=True, default='bin/thrift',
+             help='Find thrift binaries under this dir.   Used as part of the path to lookup the'
+                  'tool with --pants-support-baseurls and --pants-bootstrapdir')
+    register('--version', advanced=True, default='0.5.0-finagle',
+             help='Thrift compiler version.   Used as part of the path to lookup the'
+                  'tool with --pants-support-baseurls and --pants-bootstrapdir')
     register('--java', advanced=True, type=Options.dict, help='GenInfo for Java.')
     register('--python', advanced=True, type=Options.dict, help='GenInfo for Python.')
 
@@ -86,7 +90,7 @@ class ApacheThriftGen(CodeGen):
   @property
   def thrift_binary(self):
     if self._thrift_binary is None:
-      self._thrift_binary = select_thrift_binary(self.context.options)
+      self._thrift_binary = select_thrift_binary(self.get_options())
     return self._thrift_binary
 
   def create_geninfo(self, key):
@@ -138,7 +142,7 @@ class ApacheThriftGen(CodeGen):
     elif lang == 'python':
       gen = self.gen_python.gen
     else:
-      raise TaskError('Unrecognized thrift gen lang: %s' % lang)
+      raise TaskError('Unrecognized thrift gen lang: {}'.format(lang))
 
     args = [
       self.thrift_binary,
@@ -155,7 +159,7 @@ class ApacheThriftGen(CodeGen):
 
     sessions = []
     for source in sources:
-      self.context.log.info('Generating thrift for %s\n' % source)
+      self.context.log.info('Generating thrift for {}\n'.format(source))
       # Create a unique session dir for this thrift root.  Sources may be full paths but we only
       # need the path relative to the build root to ensure uniqueness.
       # TODO(John Sirois): file paths should be normalized early on and uniformly, fix the need to
@@ -168,7 +172,7 @@ class ApacheThriftGen(CodeGen):
       cmd = args[:]
       cmd.extend(('-o', outdir))
       cmd.append(relsource)
-      self.context.log.debug('Executing: %s' % ' '.join(cmd))
+      self.context.log.debug('Executing: {}'.format(' '.join(cmd)))
       sessions.append(self.ThriftSession(outdir, cmd, subprocess.Popen(cmd)))
 
     result = 0
@@ -178,11 +182,11 @@ class ApacheThriftGen(CodeGen):
       else:
         result = session.process.wait()
         if result != 0:
-          self.context.log.error('Failed: %s' % ' '.join(session.cmd))
+          self.context.log.error('Failed: {}'.format(' '.join(session.cmd)))
         else:
           _copytree(session.outdir, self.combined_dir)
     if result != 0:
-      raise TaskError('%s ... exited non-zero (%i)' % (self.thrift_binary, result))
+      raise TaskError('{} ... exited non-zero ({})'.format(self.thrift_binary, result))
 
   def createtarget(self, lang, gentarget, dependees):
     if lang == 'java':
@@ -190,7 +194,7 @@ class ApacheThriftGen(CodeGen):
     elif lang == 'python':
       return self._create_python_target(gentarget, dependees)
     else:
-      raise TaskError('Unrecognized thrift gen lang: %s' % lang)
+      raise TaskError('Unrecognized thrift gen lang: {}'.format(lang))
 
   def _create_java_target(self, target, dependees):
     def create_target(files, deps):
@@ -276,7 +280,7 @@ def calculate_gen(source):
 def calculate_python_genfiles(namespace, types):
   basepath = namespace.replace('.', '/')
   def path(name):
-    return os.path.join(basepath, '%s.py' % name)
+    return os.path.join(basepath, '{}.py'.format(name))
   yield path('__init__')
   if 'const' in types:
     yield path('constants')
@@ -284,13 +288,13 @@ def calculate_python_genfiles(namespace, types):
     yield path('ttypes')
   for service in types['service']:
     yield path(service)
-    yield os.path.join(basepath, '%s-remote' % service)
+    yield os.path.join(basepath, '{}-remote'.format(service))
 
 
 def calculate_java_genfiles(namespace, types):
   basepath = namespace.replace('.', '/')
   def path(name):
-    return os.path.join(basepath, '%s.java' % name)
+    return os.path.join(basepath, '{}.java'.format(name))
   if 'const' in types:
     yield path('Constants')
   for typename in ['enum', 'exception', 'service', 'struct', 'union']:

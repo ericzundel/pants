@@ -36,12 +36,12 @@ def find_includes(basedirs, source, log=None):
           include = os.path.join(basedir, capture)
           if os.path.exists(include):
             if log:
-              log.debug('%s has include %s' % (source, include))
+              log.debug('{} has include {}'.format(source, include))
             includes.add(include)
             added = True
         if not added:
-          raise ValueError("%s included in %s not found in bases %s"
-                           % (include, source, all_basedirs))
+          raise ValueError("{} included in {} not found in bases {}"
+                           .format(include, source, all_basedirs))
   return includes
 
 
@@ -97,7 +97,7 @@ def calculate_compile_roots(targets, is_thrift_target):
 def select_thrift_binary(options):
   """Selects a thrift compiler binary matching the current os and architecture.
 
+  :param Options options: options for the current task
   Defaults to the thrift compiler version specified in the gen.thrift options scope.
   """
-  thrift_options = options.for_scope('gen.thrift')
-  return BinaryUtil().select_binary(thrift_options.supportdir, thrift_options.version, 'thrift')
+  return BinaryUtil.from_options(options).select_binary('thrift')

@@ -86,7 +86,6 @@ python_library(
     'src/python/pants/backend/core/targets:common',
     'src/python/pants:binary_util',
     'src/python/pants/util:dirutil',
-
   ],
 )
 
@@ -285,8 +284,7 @@ python_library(
   name = 'scm_publish',
   sources = ['scm_publish.py'],
   dependencies = [
-    ':common',
-    'src/python/pants/base:deprecated',
+    'src/python/pants/base:exceptions',
     'src/python/pants/option',
     'src/python/pants/scm',
   ],

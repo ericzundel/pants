@@ -35,10 +35,7 @@ class JvmBinaryTask(JarTask):
   def prepare(cls, options, round_manager):
     super(JvmBinaryTask, cls).prepare(options, round_manager)
     round_manager.require('jar_dependencies', predicate=cls.is_binary)
-
-  def __init__(self, *args, **kwargs):
-    super(JvmBinaryTask, self).__init__(*args, **kwargs)
-    self._jar_builder = self.prepare_jar_builder()
+    cls.JarBuilder.prepare(round_manager)
 
   def list_external_jar_dependencies(self, binary, confs=None):
     """Returns the external jar dependencies of the given binary.
@@ -72,16 +69,15 @@ class JvmBinaryTask(JarTask):
                          compressed=True) as jar:
 
         with self.context.new_workunit(name='add-internal-classes'):
-          self._jar_builder.add_target(jar, binary, recursive=True)
-
-        if with_external_deps:
-          with self.context.new_workunit(name='add-dependency-jars'):
-            for basedir, external_jar in self.list_external_jar_dependencies(binary):
-              external_jar_path = os.path.join(basedir, external_jar)
-              self.context.log.debug('  dumping %s' % external_jar_path)
-              jar.writejar(external_jar_path)
-
-        yield jar
+          with self.create_jar_builder(jar) as jar_builder:
+            jar_builder.add_target(binary, recursive=True)
+          if with_external_deps:
+            with self.context.new_workunit(name='add-dependency-jars'):
+              for basedir, external_jar in self.list_external_jar_dependencies(binary):
+                external_jar_path = os.path.join(basedir, external_jar)
+                self.context.log.debug('  dumping {}'.format(external_jar_path))
+                jar.writejar(external_jar_path)
+          yield jar
 
   def _mapped_dependencies(self, jardepmap, binary, confs):
     # TODO(John Sirois): rework product mapping towards well known types
@@ -117,7 +113,7 @@ class JvmBinaryTask(JarTask):
           for jar in jars:
             excludes.add((basedir, jar))
     if excludes:
-      self.context.log.debug('Calculated excludes:\n\t%s' % '\n\t'.join(str(e) for e in excludes))
+      self.context.log.debug('Calculated excludes:\n\t{}'.format('\n\t'.join(str(e) for e in excludes)))
 
     externaljars = OrderedSet()
 
@@ -129,7 +125,7 @@ class JvmBinaryTask(JarTask):
             if (basedir, externaljar) not in excludes:
               externaljars.add((basedir, externaljar))
             else:
-              self.context.log.debug('Excluding %s from binary' % externaljar)
+              self.context.log.debug('Excluding {} from binary'.format(externaljar))
 
     binary.walk(add_jars)
     return externaljars

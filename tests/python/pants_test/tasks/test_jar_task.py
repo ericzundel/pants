@@ -7,6 +7,7 @@ from __future__ import (absolute_import, division, generators, nested_scopes, pr
 
 import os
 import re
+import subprocess
 from collections import defaultdict
 from contextlib import contextmanager
 from textwrap import dedent
@@ -16,7 +17,7 @@ from twitter.common.collections import maybe_list
 
 from pants.backend.jvm.tasks.jar_task import JarTask
 from pants.goal.products import MultipleRootedProducts
-from pants.util.contextutil import open_zip, temporary_dir, temporary_file
+from pants.util.contextutil import open_zip, pushd, temporary_dir, temporary_file
 from pants.util.dirutil import safe_mkdir, safe_mkdtemp, safe_rmtree
 from pants_test.jvm.jar_task_test_base import JarTaskTestBase
 
@@ -61,12 +62,8 @@ class JarTaskTest(BaseJarTaskTest):
 
   def setUp(self):
     super(JarTaskTest, self).setUp()
-
-    self.jar_task = self.prepare_jar_task(
-      self.context(config=dedent('''
-        [DEFAULT]
-        max_subprocess_args: {}
-        '''.format(self.MAX_SUBPROC_ARGS))))
+    self.set_options(max_subprocess_args=self.MAX_SUBPROC_ARGS)
+    self.jar_task = self.prepare_jar_task(self.context())
 
   def test_update_write(self):
     with temporary_dir() as chroot:
@@ -202,6 +199,22 @@ class JarTaskTest(BaseJarTaskTest):
 
 
 class JarBuilderTest(BaseJarTaskTest):
+
+  def setUp(self):
+    super(JarBuilderTest, self).setUp()
+    self.set_options(max_subprocess_args=100)
+
+
+  def _add_to_classes_by_target(self, context, tgt, filename):
+    class_products = context.products.get_data('classes_by_target',
+                                               lambda: defaultdict(MultipleRootedProducts))
+    java_agent_products = MultipleRootedProducts()
+    java_agent_products.add_rel_paths(os.path.join(self.build_root,
+                                                   os.path.dirname(filename)),
+                                      [os.path.basename(filename)])
+    class_products[tgt] = java_agent_products
+
+
   def test_agent_manifest(self):
     self.add_to_build_file('src/java/pants/agents', dedent('''
         java_agent(
@@ -214,24 +227,19 @@ class JarBuilderTest(BaseJarTaskTest):
         )''').strip())
     java_agent = self.target('src/java/pants/agents:fake_agent')
 
-    context = self.context(target_roots=java_agent)
+    context = self.context(target_roots=[java_agent])
     jar_task = self.prepare_jar_task(context)
 
-    class_products = context.products.get_data('classes_by_target',
-                                               lambda: defaultdict(MultipleRootedProducts))
-    java_agent_products = MultipleRootedProducts()
-    self.create_file('.pants.d/javac/classes/FakeAgent.class', '0xCAFEBABE')
-    java_agent_products.add_rel_paths(os.path.join(self.build_root, '.pants.d/javac/classes'),
-                                      ['FakeAgent.class'])
-    class_products[java_agent] = java_agent_products
-
+    classfile = '.pants.d/javac/classes/FakeAgent.class'
+    self.create_file(classfile, '0xCAFEBABE')
+    self._add_to_classes_by_target(context, java_agent, classfile)
     context.products.safe_create_data('resources_by_target',
-                                      lambda: defaultdict(MultipleRootedProducts))
 
-    jar_builder = jar_task.prepare_jar_builder()
+                                  lambda: defaultdict(MultipleRootedProducts))
     with self.jarfile() as existing_jarfile:
       with jar_task.open_jar(existing_jarfile) as jar:
-        jar_builder.add_target(jar, java_agent)
+        with jar_task.create_jar_builder(jar) as jar_builder:
+          jar_builder.add_target(java_agent)
 
       with open_zip(existing_jarfile) as jar:
         self.assert_listing(jar, 'FakeAgent.class')
@@ -248,3 +256,82 @@ class JarBuilderTest(BaseJarTaskTest):
         }
         self.assertEquals(set(expected_entries.items()),
                           set(expected_entries.items()).intersection(set(all_entries.items())))
+
+  def test_manifest_items(self):
+    self.add_to_build_file('src/java/hello', dedent('''
+        jvm_binary(
+          name='hello',
+          main='hello.Hello',
+          manifest_entries = {
+            'Foo': 'foo-value',
+            'Implementation-Version': '1.2.3',
+          },
+        )''').strip())
+    binary_target = self.target('src/java/hello:hello')
+    context = self.context(target_roots=[binary_target])
+
+    classfile = '.pants.d/javac/classes/hello/Hello.class'
+    self.create_file(classfile, '0xDEADBEEF')
+    self._add_to_classes_by_target(context, binary_target, classfile)
+    context.products.safe_create_data('resources_by_target',
+                                      lambda: defaultdict(MultipleRootedProducts))
+
+    jar_task = self.prepare_jar_task(context)
+
+    with self.jarfile() as existing_jarfile:
+      with jar_task.open_jar(existing_jarfile) as jar:
+        with jar_task.create_jar_builder(jar) as jar_builder:
+          jar_builder.add_target(binary_target)
+
+      with open_zip(existing_jarfile) as jar:
+        manifest = jar.read('META-INF/MANIFEST.MF').strip()
+        all_entries = dict(tuple(re.split(r'\s*:\s*', line, 1)) for line in manifest.splitlines())
+        expected_entries = {
+          'Foo': 'foo-value',
+          'Implementation-Version': '1.2.3',
+          }
+        self.assertEquals(set(expected_entries.items()),
+                          set(expected_entries.items()).intersection(set(all_entries.items())))
+
+  def test_implementation_version_sha(self):
+    with pushd(self.build_root):
+      subprocess.check_call(['git', 'init' ])
+      sourcefile = 'src/java/hello/Hello.java'
+      self.create_file(sourcefile, 'package hello; public class Hello {}')
+      subprocess.check_call(['git', 'add', sourcefile])
+      subprocess.check_call(['git', '-c', 'user.name=Test', '-c', 'user.email="text@example.com"',
+                             'commit', '-a', '-m', 'Initial'])
+      proc = subprocess.Popen(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE)
+      (out, err) = proc.communicate()
+      sha = out.strip()
+      self.assertRegexpMatches(sha, '^[0-9a-f]{40}$')
+
+    self.add_to_build_file('src/java/hello', dedent('''
+        jvm_binary(
+          name='hello-git',
+          main='hello.Hello',
+          source='Hello.java',
+          manifest_entries = {
+            'Implementation-Version': '{{git_commit_id}}',
+          },
+        )''').strip())
+    binary_target = self.target('src/java/hello:hello-git')
+    context = self.context(target_roots=[binary_target])
+
+    classfile = '.pants.d/javac/classes/hello/Hello.class'
+    self.create_file(classfile, '0xDEADBEEF')
+    self._add_to_classes_by_target(context, binary_target, classfile)
+    context.products.safe_create_data('resources_by_target',
+                                      lambda: defaultdict(MultipleRootedProducts))
+
+    jar_task = self.prepare_jar_task(context)
+
+    with self.jarfile() as existing_jarfile:
+      with jar_task.open_jar(existing_jarfile) as jar:
+        with jar_task.create_jar_builder(jar) as jar_builder:
+          jar_builder.add_target(binary_target)
+
+      with open_zip(existing_jarfile) as jar:
+        manifest = jar.read('META-INF/MANIFEST.MF').strip()
+        all_entries = dict(tuple(re.split(r'\s*:\s*', line, 1)) for line in manifest.splitlines())
+        self.assertEquals(all_entries['Implementation-Version'], sha)

@@ -2,6 +2,26 @@
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 python_library(
+  name='test_infra',
+  dependencies=[
+    'tests/python/pants_test:base_test',
+    'tests/python/pants_test:int-test',
+    'tests/python/pants_test/jvm:jar_task_test_base',
+    'tests/python/pants_test/jvm:nailgun_task_test_base',
+    'tests/python/pants_test/jvm:jvm_tool_task_test_base',
+    'tests/python/pants_test/engine:engine_test_base',
+  ],
+  provides=pants_setup_py(
+    name='pantsbuild.pants.testinfra',
+    description='Test support for writing pants plugins.',
+    namespace_packages=['pants_test'],
+    additional_classifiers=[
+      'Topic :: Software Development :: Testing',
+    ]
+  )
+)
+
+python_library(
   name = 'base_test',
   sources = ['base_test.py'],
   dependencies = [
@@ -9,29 +29,22 @@ python_library(
     'src/python/pants/backend/core/targets:common',
     'src/python/pants/base:address',
     'src/python/pants/base:build_configuration',
-    'src/python/pants/base:build_environment',
     'src/python/pants/base:build_file_address_mapper',
     'src/python/pants/base:build_file_aliases',
     'src/python/pants/base:build_file_parser',
     'src/python/pants/base:build_graph',
     'src/python/pants/base:build_root',
+    'src/python/pants/base:cmd_line_spec_parser',
     'src/python/pants/base:config',
     'src/python/pants/base:exceptions',
     'src/python/pants/base:target',
     'src/python/pants/goal:goal',
     'src/python/pants/goal:products',
+    'src/python/pants/option',
+    'src/python/pants/subsystem',
     'src/python/pants/util:contextutil',
     'src/python/pants/util:dirutil',
     'tests/python/pants_test/base:context_utils',
-  ]
-)
-
-python_library(
-  name = 'task_test_base',
-  sources = ['task_test_base.py'],
-  dependencies = [
-    'src/python/pants/base:exceptions',
-    ':base_test',
   ]
 )
 
@@ -52,7 +65,7 @@ python_tests(
   dependencies = [
     ':base_test',
     'src/python/pants:binary_util',
-    'src/python/pants/base:exceptions'
+    'tests/python/pants_test/base:context_utils',
   ]
 )
 
@@ -112,6 +125,7 @@ target(
     'tests/python/pants_test/python',
     'tests/python/pants_test/reporting',
     'tests/python/pants_test/scm',
+    'tests/python/pants_test/subsystem',
     'tests/python/pants_test/targets',
     'tests/python/pants_test/tasks',
     'tests/python/pants_test/util',

@@ -4,12 +4,28 @@
 target(
   name = 'tasks',
   dependencies = [
+    ':bootstrap_jvm_tools',
     ':checkstyle',
     ':ivy_imports',
     ':junit_run',
     ':scalastyle',
     ':unpack_jars',
     'tests/python/pants_test/backend/jvm/tasks/jvm_compile',
+  ]
+)
+
+python_tests(
+  name = 'bootstrap_jvm_tools',
+  sources = ['test_bootstrap_jvm_tools.py'],
+  dependencies = [
+    'src/python/pants/backend/core/tasks:task',
+    'src/python/pants/backend/jvm/targets:jvm',
+    'src/python/pants/backend/jvm/tasks:bootstrap_jvm_tools',
+    'src/python/pants/backend/jvm/tasks:jvm_tool_task_mixin',
+    'src/python/pants/java:executor',
+    'src/python/pants/java/jar:shader',
+    'src/python/pants/util:contextutil',
+    'tests/python/pants_test/jvm:jvm_tool_task_test_base',
   ]
 )
 
@@ -33,7 +49,19 @@ python_tests(
     'src/python/pants/backend/jvm/tasks:ivy_imports',
     'src/python/pants/base:build_file_aliases',
     'src/python/pants/util:contextutil',
-    'tests/python/pants_test/tasks:base'
+    'tests/python/pants_test/jvm:nailgun_task_test_base',
+  ]
+)
+
+python_tests(
+  name = 'ivy_resolve',
+  sources = ['test_ivy_resolve.py'],
+  dependencies = [
+    '3rdparty/python/twitter/commons:twitter.common.collections',
+    'src/python/pants/backend/jvm/targets:jvm',
+    'src/python/pants/backend/jvm/targets:scala',
+    'src/python/pants/backend/jvm/tasks:ivy_resolve',
+    'tests/python/pants_test/jvm:nailgun_task_test_base',
   ]
 )
 
@@ -45,10 +73,19 @@ python_tests(
     'src/python/pants/backend/jvm/tasks:junit_run',
     'src/python/pants/goal:products',
     'src/python/pants/ivy',
-    'src/python/pants/java:distribution',
+    'src/python/pants/java/distribution:distribution',
     'src/python/pants/java:executor',
     'tests/python/pants_test/jvm:jvm_tool_task_test_base',
   ]
+)
+
+python_tests(
+  name = 'jvm_binary_integration',
+  sources = ['test_jvm_binary_integration.py'],
+  dependencies = [
+    'src/python/pants/base:build_environment',
+    'tests/python/pants_test:int-test',
+  ],
 )
 
 python_tests(
@@ -64,17 +101,6 @@ python_tests(
 )
 
 python_tests(
-  name = 'ivy_resolve',
-  sources = ['test_ivy_resolve.py'],
-  dependencies = [
-    'src/python/pants/backend/jvm/targets:jvm',
-    'src/python/pants/backend/jvm/targets:scala',
-    'src/python/pants/backend/jvm/tasks:ivy_resolve',
-    'tests/python/pants_test/jvm:nailgun_task_test_base',
-  ]
-)
-
-python_tests(
   name = 'unpack_jars',
   sources = ['test_unpack_jars.py'],
   dependencies = [
@@ -82,7 +108,6 @@ python_tests(
     'src/python/pants/backend/jvm/targets:jvm',
     'src/python/pants/backend/jvm/tasks:unpack_jars',
     'src/python/pants/base:target',
-    'tests/python/pants_test:base_test',
-    'tests/python/pants_test/tasks:base'
-    ]
+    'tests/python/pants_test/tasks:task_test_base',
+  ]
 )

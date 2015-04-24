@@ -4,7 +4,6 @@
 target(
   name='scala',
   dependencies=[
-    ':scala_compile_integration',
     ':zinc_analysis',
   ],
 )
@@ -23,5 +22,6 @@ python_tests(
   dependencies=[
     'src/python/pants/backend/jvm/tasks/jvm_compile:scala',
     'src/python/pants/util:contextutil',
+    'src/python/pants/util:dirutil',
   ]
 )

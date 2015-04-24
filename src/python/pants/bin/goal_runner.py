@@ -29,8 +29,10 @@ from pants.goal.initialize_reporting import initial_reporting, update_reporting
 from pants.goal.run_tracker import RunTracker
 from pants.logging.setup import setup_logging
 from pants.option.global_options import register_global_options
+from pants.option.options import Options
 from pants.option.options_bootstrapper import OptionsBootstrapper
 from pants.reporting.report import Report
+from pants.subsystem.subsystem import Subsystem
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 class GoalRunner(object):
   """Lists installed goals or else executes a named goal."""
+
+  # Subsytems used outside of any task.
+  subsystems = (RunTracker, )
 
   def __init__(self, root_dir):
     """
@@ -68,9 +73,14 @@ class GoalRunner(object):
 
     # Now that plugins and backends are loaded, we can gather the known scopes.
     self.targets = []
-    # TODO: Create a 'Subsystem' abstraction instead of special-casing run-tracker here
-    # and in register_options().
-    known_scopes = ['', 'run-tracker']
+
+    known_scopes = ['']
+
+    # Add scopes for global subsystem instances.
+    for subsystem_type in set(self.subsystems) | Goal.global_subsystem_types():
+      known_scopes.append(subsystem_type.qualify_scope(Options.GLOBAL_SCOPE))
+
+    # Add scopes for all tasks in all goals.
     for goal in Goal.all():
       # Note that enclosing scopes will appear before scopes they enclose.
       known_scopes.extend(filter(None, goal.known_scopes()))
@@ -79,12 +89,16 @@ class GoalRunner(object):
     self.options = options_bootstrapper.get_full_options(known_scopes=known_scopes)
     self.register_options()
 
-    self.run_tracker = RunTracker.from_options(self.options)
+    # Make the options values available to all subsystems.
+    Subsystem._options = self.options
+
+    # Now that we have options we can instantiate subsystems.
+    self.run_tracker = RunTracker.global_instance()
     report = initial_reporting(self.config, self.run_tracker)
     self.run_tracker.start(report)
     url = self.run_tracker.run_info.get_info('report_url')
     if url:
-      self.run_tracker.log(Report.INFO, 'See a report at: %s' % url)
+      self.run_tracker.log(Report.INFO, 'See a report at: {}'.format(url))
     else:
       self.run_tracker.log(Report.INFO, '(To run a reporting server: ./pants server)')
 
@@ -121,22 +135,17 @@ class GoalRunner(object):
     return self.options.for_global_scope()
 
   def register_options(self):
-    # Add a 'bootstrap' attribute to the register function, so that register_global can
-    # access the bootstrap option values.
-    def register_global(*args, **kwargs):
-      return self.options.register_global(*args, **kwargs)
-    register_global.bootstrap = self.options.bootstrap_option_values()
-    register_global_options(register_global)
+    # Standalone global options.
+    register_global_options(self.options.registration_function_for_global_scope())
 
-    # This is the first case we have of non-task, non-global options.
-    # The current implementation special-cases RunTracker, and is temporary.
-    # In the near future it will be replaced with a 'Subsystem' abstraction.
-    # But for now this is useful for kicking the tires.
-    def register_run_tracker(*args, **kwargs):
-      self.options.register('run-tracker', *args, **kwargs)
-    RunTracker.register_options(register_run_tracker)
+    # Options for global-level subsystems.
+    for subsystem_type in set(self.subsystems) | Goal.global_subsystem_types():
+      subsystem_type.register_options_on_scope(self.options, Options.GLOBAL_SCOPE)
 
+    # TODO(benjy): Should Goals be subsystems? Or should the entire goal-running mechanism
+    # be a subsystem?
     for goal in Goal.all():
+      # Register task options (including per-task subsystem options).
       goal.register_options(self.options)
 
   def _expand_goals_and_specs(self):
@@ -223,7 +232,7 @@ class GoalRunner(object):
         unknown.append(goal)
 
     if unknown:
-      context.log.error('Unknown goal(s): %s\n' % ' '.join(goal.name for goal in unknown))
+      context.log.error('Unknown goal(s): {}\n'.format(' '.join(goal.name for goal in unknown)))
       return 1
 
     engine = RoundEngine()

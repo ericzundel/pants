@@ -10,7 +10,7 @@ from abc import abstractmethod
 from collections import OrderedDict
 from zipfile import ZIP_DEFLATED
 
-from pants.util.contextutil import open_tar, open_zip64
+from pants.util.contextutil import open_tar, open_zip
 from pants.util.dirutil import safe_walk
 from pants.util.meta import AbstractClass
 from pants.util.strutil import ensure_text
@@ -48,7 +48,7 @@ class TarArchiver(Archiver):
 
   def create(self, basedir, outdir, name, prefix=None):
     basedir = ensure_text(basedir)
-    tarpath = os.path.join(outdir, '%s.%s' % (ensure_text(name), self.extension))
+    tarpath = os.path.join(outdir, '{}.{}'.format(ensure_text(name), self.extension))
     with open_tar(tarpath, self.mode, dereference=True, errorlevel=1) as tar:
       tar.add(basedir, arcname=prefix or '.')
     return tarpath
@@ -66,11 +66,11 @@ class ZipArchiver(Archiver):
     :param function filter_func: optional filter with the filename as the parameter.  Returns True if
       the file should be extracted.
     """
-    with open_zip64(path) as archive_file:
+    with open_zip(path) as archive_file:
       for name in archive_file.namelist():
         # While we're at it, we also perform this safety test.
         if name.startswith(b'/') or name.startswith(b'..'):
-          raise ValueError('Zip file contains unsafe path: %s' % name)
+          raise ValueError('Zip file contains unsafe path: {}'.format(name))
         # Ignore directories. extract() will create parent dirs as needed.
         # OS X's python 2.6.1 has a bug in zipfile that makes it unzip directories as regular files.
         # This method should work on for python 2.6-3.x.
@@ -84,8 +84,8 @@ class ZipArchiver(Archiver):
     self.compression = compression
 
   def create(self, basedir, outdir, name, prefix=None):
-    zippath = os.path.join(outdir, '%s.zip' % name)
-    with open_zip64(zippath, 'w', compression=ZIP_DEFLATED) as zip:
+    zippath = os.path.join(outdir, '{}.zip'.format(name))
+    with open_zip(zippath, 'w', compression=ZIP_DEFLATED) as zip:
       for root, _, files in safe_walk(basedir):
         root = ensure_text(root)
         for file in files:
@@ -119,5 +119,5 @@ def archiver(typename):
   """
   archiver = _ARCHIVER_BY_TYPE.get(typename)
   if not archiver:
-    raise ValueError('No archiver registered for %r' % typename)
+    raise ValueError('No archiver registered for {!r}'.format(typename))
   return archiver

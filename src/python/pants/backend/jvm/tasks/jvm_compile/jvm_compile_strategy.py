@@ -13,7 +13,7 @@ from twitter.common.collections import OrderedSet
 
 from pants.base.build_environment import get_buildroot, get_scm
 from pants.base.exceptions import TaskError
-from pants.util.dirutil import safe_mkdir
+from pants.util.dirutil import safe_delete, safe_mkdir
 
 
 class JvmCompileStrategy(object):
@@ -21,11 +21,27 @@ class JvmCompileStrategy(object):
 
   __metaclass__ = ABCMeta
 
-  # A context for the compilation of a target.
-  #
-  # This can be used to differentiate between a partially completed compile in a temporary location
-  # and a finalized compile in its permanent location.
-  CompileContext = namedtuple('CompileContext', ['target', 'analysis_file', 'classes_dir', 'sources'])
+  class CompileContext(object):
+    """A context for the compilation of a target.
+
+    This can be used to differentiate between a partially completed compile in a temporary location
+    and a finalized compile in its permanent location.
+    """
+    def __init__(self, target, analysis_file, classes_dir, sources):
+      self.target = target
+      self.analysis_file = analysis_file
+      self.classes_dir = classes_dir
+      self.sources = sources
+
+    @property
+    def _id(self):
+      return (self.target, self.analysis_file, self.classes_dir)
+
+    def __eq__(self, other):
+      return self._id == other._id
+
+    def __hash__(self):
+      return hash(self._id)
 
   # Common code.
   # ------------
@@ -37,11 +53,18 @@ class JvmCompileStrategy(object):
   def _portable_analysis_for_target(analysis_dir, target):
     return JvmCompileStrategy._analysis_for_target(analysis_dir, target) + '.portable'
 
+  @classmethod
+  @abstractmethod
+  def register_options(cls, register, language):
+    """Registration for strategy-specific options.
+
+    The abstract base class does not register any options itself: those are left to JvmCompile.
+    """
+    pass
+
   def __init__(self, context, options, workdir, analysis_tools, sources_predicate):
     self.context = context
     self._analysis_tools = analysis_tools
-
-    self._target_sources_dir = os.path.join(workdir, 'target_sources')
 
     # Mapping of relevant (as selected by the predicate) sources by target.
     self._sources_by_target = None
@@ -49,6 +72,12 @@ class JvmCompileStrategy(object):
 
     # The ivy confs for which we're building.
     self._confs = options.confs
+    self._clear_invalid_analysis = options.clear_invalid_analysis
+
+  @abstractmethod
+  def name(self):
+    """A readable, unique name for this strategy."""
+    pass
 
   @abstractmethod
   def invalidation_hints(self, relevant_targets):
@@ -65,9 +94,10 @@ class JvmCompileStrategy(object):
 
   @abstractmethod
   def compute_classes_by_source(self, compile_contexts):
-    """Compute src->classes for the given compile_contexts.
+    """Compute a map of (context->(src->classes)) for the given compile_contexts.
 
-    Srcs are relative to buildroot. Classes are absolute paths.
+    It's possible (although unfortunate) for multiple targets to own the same sources, hence
+    the top level division. Srcs are relative to buildroot. Classes are absolute paths.
     """
     pass
 
@@ -92,15 +122,28 @@ class JvmCompileStrategy(object):
   @abstractmethod
   def compute_resource_mapping(self, compile_contexts):
     """Computes a merged ResourceMapping for the given compile contexts.
-    
+
     Since classes should live in exactly one context, a merged mapping is unambiguous.
     """
     pass
 
   def pre_compile(self):
-    # Only create these working dirs during execution phase, otherwise, they
-    # would be wiped out by clean-all goal/task if it's specified.
-    safe_mkdir(self._target_sources_dir)
+    """Executed once before any compiles."""
+    pass
+
+  def validate_analysis(self, path):
+    """Throws a TaskError for invalid analysis files."""
+    try:
+      self._analysis_parser.validate_analysis(path)
+    except Exception as e:
+      if self._clear_invalid_analysis:
+        self.context.log.warn("Invalid analysis detected at path {} ... pants will remove these "
+                              "automatically, but\nyou may experience spurious warnings until "
+                              "clean-all is executed.\n{}".format(path, e))
+        safe_delete(path)
+      else:
+        raise TaskError("An internal build directory contains invalid/mismatched analysis: please "
+                        "run `clean-all` if your tools versions changed recently:\n{}".format(e))
 
   def prepare_compile(self, cache_manager, all_targets, relevant_targets):
     """Prepares to compile the given set of targets.
@@ -151,25 +194,6 @@ class JvmCompileStrategy(object):
     for _, f in classpath:
       if os.path.relpath(f, buildroot).startswith('..'):
         raise TaskError('Classpath entry {f} is located outside the buildroot.'.format(f=f))
-
-  def _get_previous_sources_by_target(self, target):
-    """Returns the target's sources as recorded on the last successful build of target.
-
-    Returns a list of absolute paths.
-    """
-    path = os.path.join(self._target_sources_dir, target.identifier)
-    if os.path.exists(path):
-      with open(path, 'r') as infile:
-        return [s.rstrip() for s in infile.readlines()]
-    else:
-      return []
-
-  def _record_previous_sources_by_target(self, target, sources):
-    # Record target -> source mapping for future use.
-    with open(os.path.join(self._target_sources_dir, target.identifier), 'w') as outfile:
-      for src in sources:
-        outfile.write(os.path.join(get_buildroot(), src))
-        outfile.write('\n')
 
   def _find_locally_changed_targets(self, sources_by_target):
     """Finds the targets whose sources have been modified locally.

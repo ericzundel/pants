@@ -366,8 +366,8 @@ def entry_for_one(nom, sym):
   if inspect.ismethod(sym) or inspect.isfunction(sym):
     return entry_for_one_func(nom, sym)
   return msg_entry(nom,
-                   "TODO! no doc gen for %s %s" % (str(type(sym)), str(sym)),
-                   "TODO! no doc gen for %s %s" % (str(type(sym)), str(sym)))
+                   "TODO! no doc gen for {} {}".format(str(type(sym)), str(sym)),
+                   "TODO! no doc gen for {} {}".format(str(type(sym)), str(sym)))
 
 
 PREDEFS = {  # some hardwired entries
@@ -438,6 +438,7 @@ def gen_glopts_reference_data():
   def register(*args, **kwargs):
     option_parser.register(*args, **kwargs)
   register.bootstrap = bootstrap_option_values()
+  register.scope = ''
   register_bootstrap_options(register, buildroot='<buildroot>')
   register_global_options(register)
   argparser = option_parser._help_argparser
@@ -485,6 +486,7 @@ def gen_tasks_options_reference_data():
       def register(*args, **kwargs):
         option_parser.register(*args, **kwargs)
       register.bootstrap = bootstrap_option_values()
+      register.scope = ''
       task_type.register_options(register)
       argparser = option_parser._help_argparser
       scope = Goal.scope(goal.name, task_name)

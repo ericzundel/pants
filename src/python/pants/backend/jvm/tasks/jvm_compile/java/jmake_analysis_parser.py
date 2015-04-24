@@ -19,6 +19,7 @@ class JMakeAnalysisParser(AnalysisParser):
   """Parse a file containing representation of an analysis for some JVM language."""
 
   empty_test_header = 'pcd entries'
+  current_test_header = 'pcd entries:\n'
 
   def parse(self, infile):
     self._expect_header(infile.readline(), 'pcd entries')
@@ -28,7 +29,7 @@ class JMakeAnalysisParser(AnalysisParser):
       line = infile.readline()
       tpl = line.split('\t')
       if len(tpl) != 5:
-        raise ParseError('Line must contain 5 tab-separated fields: %s' % line)
+        raise ParseError('Line must contain 5 tab-separated fields: {}'.format(line))
       pcd_entries.append(tpl)  # Note: we preserve the \n on the last entry.
     src_to_deps = self._parse_deps_at_position(infile)
     return JMakeAnalysis(pcd_entries, src_to_deps)
@@ -86,4 +87,4 @@ class JMakeAnalysisParser(AnalysisParser):
   def _expect_header(self, line, header):
     expected = header + ':\n'
     if line != expected:
-      raise ParseError('Expected: %s. Found: %s' % (expected, line))
+      raise ParseError('Expected: {}. Found: {}'.format(expected, line))

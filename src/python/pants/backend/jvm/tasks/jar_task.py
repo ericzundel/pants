@@ -7,19 +7,22 @@ from __future__ import (absolute_import, division, generators, nested_scopes, pr
 
 import os
 import tempfile
-from abc import abstractmethod, abstractproperty
+from abc import abstractmethod
 from contextlib import contextmanager
 
+import pystache
 from six import binary_type, string_types
 from twitter.common.collections import maybe_list
 
+from pants.backend.jvm.subsystems.jar_tool import JarTool
 from pants.backend.jvm.targets.java_agent import JavaAgent
-from pants.backend.jvm.targets.jvm_binary import Duplicate, JarRules, Skip
+from pants.backend.jvm.targets.jvm_binary import Duplicate, JarRules, JvmBinary, Skip
 from pants.backend.jvm.tasks.nailgun_task import NailgunTask
+from pants.base.build_environment import get_buildroot
 from pants.base.exceptions import TaskError
-from pants.base.workunit import WorkUnit
 from pants.binary_util import safe_args
 from pants.java.jar.manifest import Manifest
+from pants.scm.git import Git
 from pants.util.contextutil import temporary_dir
 from pants.util.meta import AbstractClass
 
@@ -84,7 +87,7 @@ class Jar(object):
   def __init__(self):
     self._entries = []
     self._jars = []
-    self._manifest = None
+    self._manifest_entry = None
     self._main = None
     self._classpath = None
 
@@ -143,7 +146,7 @@ class Jar(object):
 
   def _add_entry(self, entry):
     if Manifest.PATH == entry.dest:
-      self._manifest = entry
+      self._manifest_entry = entry
     else:
       self._entries.append(entry)
 
@@ -158,7 +161,11 @@ class Jar(object):
     self._jars.append(jar)
 
   @contextmanager
-  def _render_jar_tool_args(self):
+  def _render_jar_tool_args(self, options):
+    """Format the arguments to jar-tool.
+
+    :param Options options:
+    """
     args = []
 
     with temporary_dir() as manifest_stage_dir:
@@ -171,18 +178,31 @@ class Jar(object):
 
       jars = self._jars or []
 
-      with safe_args(classpath, delimiter=',') as classpath_args:
-        with safe_args(files, delimiter=',') as files_args:
-          with safe_args(jars, delimiter=',') as jars_args:
+      with safe_args(classpath, options, delimiter=',') as classpath_args:
+        with safe_args(files, options, delimiter=',') as files_args:
+          with safe_args(jars, options, delimiter=',') as jars_args:
 
-            if self._main:
+            # If you specify --manifest to jar-tool you cannot specify --main.
+            if self._manifest_entry:
+              manifest_file = self._manifest_entry.materialize(manifest_stage_dir)
+            else:
+              manifest_file = None
+
+            if self._main and manifest_file:
+              main_arg = None
+              with open(manifest_file, 'a') as f:
+                f.write("Main-Class: {}\n".format(self._main))
+            else:
+              main_arg = self._main
+
+            if main_arg:
               args.append('-main={}'.format(self._main))
 
             if classpath_args:
               args.append('-classpath={}'.format(','.join(classpath_args)))
 
-            if self._manifest:
-              args.append('-manifest={}'.format(self._manifest.materialize(manifest_stage_dir)))
+            if manifest_file:
+              args.append('-manifest={}'.format(manifest_file))
 
             if files_args:
               args.append('-files={}'.format(','.join(files_args)))
@@ -199,8 +219,9 @@ class JarTask(NailgunTask):
   All subclasses will share the same underlying nailgunned jar tool and thus benefit from fast
   invocations.
   """
-
-  _CONFIG_SECTION = 'jar-tool'
+  @classmethod
+  def global_subsystems(cls):
+    return super(JarTask, cls).global_subsystems() + (JarTool, )
 
   @staticmethod
   def _flag(bool_value):
@@ -220,26 +241,12 @@ class JarTask(NailgunTask):
       raise ValueError('Unrecognized duplicate action: {}'.format(action))
     return name
 
-  @classmethod
-  def register_options(cls, register):
-    super(JarTask, cls).register_options(register)
-    cls.register_jvm_tool(register, 'jar-tool')
-
-  @classmethod
-  def prepare(cls, options, round_manager):
-    super(JarTask, cls).prepare(options, round_manager)
-    round_manager.require_data('resources_by_target')
-    round_manager.require_data('classes_by_target')
-
   def __init__(self, *args, **kwargs):
     super(JarTask, self).__init__(*args, **kwargs)
     self.set_distribution(jdk=True)
+
     # TODO(John Sirois): Consider poking a hole for custom jar-tool jvm args - namely for Xmx
     # control.
-
-  @property
-  def config_section(self):
-    return self._CONFIG_SECTION
 
   @contextmanager
   def open_jar(self, path, overwrite=False, compressed=True, jar_rules=None):
@@ -257,7 +264,7 @@ class JarTask(NailgunTask):
     except jar.Error as e:
       raise TaskError('Failed to write to jar at {}: {}'.format(path, e))
 
-    with jar._render_jar_tool_args() as args:
+    with jar._render_jar_tool_args(self.get_options()) as args:
       if args:  # Don't build an empty jar
         args.append('-update={}'.format(self._flag(not overwrite)))
         args.append('-compress={}'.format(self._flag(compressed)))
@@ -285,24 +292,14 @@ class JarTask(NailgunTask):
 
         args.append(path)
 
-        # TODO(Eric Ayers): This needs to be migrated with some thought behind it.  Consider
-        # that The jar-tool nailgun instance is shared between tasks and doesn't necessarily
-        # need the same JVM args as its parent.
-        jvm_options = self.context.config.getlist('jar-tool', 'jvm_args', default=['-Xmx64M'])
-        self.runjava(self.tool_classpath('jar-tool'),
-                     'com.twitter.common.jar.tool.Main',
-                     jvm_options=jvm_options,
-                     args=args,
-                     workunit_name='jar-tool',
-                     workunit_labels=[WorkUnit.TOOL, WorkUnit.JVM, WorkUnit.NAILGUN])
+        JarTool.global_instance().run(context=self.context, runjava=self.runjava, args=args)
 
   class JarBuilder(AbstractClass):
     """A utility to aid in adding the classes and resources associated with targets to a jar."""
 
     @staticmethod
-    def _write_agent_manifest(agent, jar):
+    def _add_agent_manifest(agent, manifest):
       # TODO(John Sirois): refactor an agent model to support 'Boot-Class-Path' properly.
-      manifest = Manifest()
       manifest.addentry(Manifest.MANIFEST_VERSION, '1.0')
       if agent.premain:
         manifest.addentry('Premain-Class', agent.premain)
@@ -314,16 +311,50 @@ class JarTask(NailgunTask):
         manifest.addentry('Can-Retransform-Classes', 'true')
       if agent.can_set_native_method_prefix:
         manifest.addentry('Can-Set-Native-Method-Prefix', 'true')
-      jar.writestr(Manifest.PATH, manifest.contents())
 
-    @abstractproperty
-    def _context(self):
-      """Implementations must supply a context."""
+    @staticmethod
+    def _add_manifest_entries(jvm_binary_target, manifest):
+      """Add additional fields to MANIFEST.MF as declared in the ManifestEntries structure.
 
-    def add_target(self, jar, target, recursive=False):
+      :param JvmBinary jvm_binary_target: target that defines the `manifest_entries`
+      :param Manifest manifest: Current manifest to be updated with values from `manifest_entries`
+        in the target definition
+      """
+      if jvm_binary_target.manifest_entries.entries:
+        template_data = {}
+        buildroot = get_buildroot()
+        worktree = Git.detect_worktree(dir=os.path.join(buildroot,
+                                                        jvm_binary_target.address.spec_path))
+        if worktree:
+          git = Git(worktree=worktree)
+          if git:
+            template_data['git_commit_id'] = git.commit_id
+
+        for header, value in jvm_binary_target.manifest_entries.entries.iteritems():
+          manifest.addentry(header, pystache.render(value, template_data))
+
+    @staticmethod
+    def prepare(round_manager):
+      """Prepares the products needed to use `create_jar_builder`.
+
+      This method should be called during task preparation to ensure the classes and resources
+      needed for jarring targets are mapped by upstream tasks that generate these.
+
+      Later, in execute context, the `create_jar_builder` method can be called to get back a
+      prepared ``JarTask.JarBuilder`` ready for use.
+      """
+      round_manager.require_data('resources_by_target')
+      round_manager.require_data('classes_by_target')
+
+    def __init__(self, context, jar):
+      self._context = context
+      self._jar = jar
+      self._manifest = Manifest()
+
+
+    def add_target(self, target, recursive=False):
       """Adds the classes and resources for a target to an open jar.
 
-      :param jar: An open jar to add to.
       :param target: The target to add generated classes and resources for.
       :param bool recursive: `True` to add classes and resources for the target's transitive
         internal dependency closure.
@@ -355,14 +386,17 @@ class JarTask(NailgunTask):
             if target_products:
               for root, products in target_products.rel_paths():
                 for prod in products:
-                  jar.write(os.path.join(root, prod), prod)
+                  self._jar.write(os.path.join(root, prod), prod)
 
           add_products(target_classes)
           for resources_target in target_resources:
             add_products(resources_target)
 
           if isinstance(tgt, JavaAgent):
-            self._write_agent_manifest(tgt, jar)
+            self._add_agent_manifest(tgt, self._manifest)
+
+          if isinstance(tgt, JvmBinary):
+            self._add_manifest_entries(tgt, self._manifest)
 
       if recursive:
         target.walk(add_to_jar)
@@ -371,15 +405,24 @@ class JarTask(NailgunTask):
 
       return targets_added
 
-  def prepare_jar_builder(self):
-    """Prepares a ``JarTask.JarBuilder`` for use during ``execute``.
+    def commit_manifest(self, jar):
+      """Updates the manifest in the jar being written to.
 
-    This method should be called during task preparation to ensure the classes and resources needed
-    for jarring targets are mapped by upstream tasks that generate these.
+      Typically done right before closing the .jar. This gives a chance for all targets to bundle
+      in their contributions to the manifest.
+      """
+      if not self._manifest.is_empty():
+        jar.writestr(Manifest.PATH, self._manifest.contents())
+
+  @contextmanager
+  def create_jar_builder(self, jar):
+    """Creates a ``JarTask.JarBuilder`` ready for use.
+
+    This method should be called during in `execute` context and only after ensuring
+    `JarTask.JarBuilder.prepare` has already been called in `prepare` context.
+
+    :param jar: An opened ``pants.backend.jvm.tasks.jar_task.Jar`.
     """
-    class PreparedJarBuilder(self.JarBuilder):
-      @property
-      def _context(me):
-        return self.context
-
-    return PreparedJarBuilder()
+    builder = self.JarBuilder(self.context, jar)
+    yield builder
+    builder.commit_manifest(jar)

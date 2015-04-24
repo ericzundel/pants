@@ -9,12 +9,14 @@ import errno
 import os
 import shutil
 
+from pants.backend.jvm.subsystems.jvm_tool_mixin import JvmToolMixin
 from pants.backend.jvm.tasks.bootstrap_jvm_tools import BootstrapJvmTools
-from pants.backend.jvm.tasks.jvm_tool_task_mixin import JvmToolTaskMixin
 from pants.base.config import Config
 from pants.base.extension_loader import load_plugins_and_backends
+from pants.ivy.bootstrapper import Bootstrapper
+from pants.option.options_bootstrapper import OptionsBootstrapper
 from pants.util.dirutil import safe_mkdir, safe_mkdtemp, safe_walk
-from pants_test.task_test_base import TaskTestBase
+from pants_test.tasks.task_test_base import TaskTestBase
 
 
 class JvmToolTaskTestBase(TaskTestBase):
@@ -25,21 +27,22 @@ class JvmToolTaskTestBase(TaskTestBase):
     return load_plugins_and_backends().registered_aliases()
 
   def setUp(self):
+    # TODO(Eric Ayers): this is the old way
     # Ensure we get a read of the real pants.ini config
     Config.reset_default_bootstrap_option_values()
-    real_config = self.config()
+    real_config = Config.from_cache()
 
     super(JvmToolTaskTestBase, self).setUp()
 
     # Use a synthetic subclass for bootstrapping within the test, to isolate this from
     # any bootstrapping the pants run executing the test might need.
     self.bootstrap_task_type, bootstrap_scope = self.synthesize_task_subtype(BootstrapJvmTools)
-    # TODO: We assume that no added jvm_options are necessary to bootstrap successfully in a test.
-    # This may not be true forever.  But getting the 'real' value here is tricky, as we have no
-    # access to the enclosing pants run's options here.
-    self.set_options_for_scope(bootstrap_scope, jvm_options=[])
-    self.set_options_for_scope(bootstrap_scope, soft_excludes=False)
-    JvmToolTaskMixin.reset_registered_tools()
+    JvmToolMixin.reset_registered_tools()
+
+    # Cap BootstrapJvmTools memory usage in tests.  The Xmx was empirically arrived upon using
+    # -Xloggc and verifying no full gcs for a test using the full gamut of resolving a multi-jar
+    # tool, constructing a fat jar and then shading that fat jar.
+    self.set_options_for_scope(bootstrap_scope, jvm_options=['-Xmx128m'])
 
     def link_or_copy(src, dest):
       try:
@@ -83,6 +86,25 @@ class JvmToolTaskTestBase(TaskTestBase):
     link('BUILD.tools', force=True)
     support_dir = real_config.getdefault('pants_supportdir')
     link_tree(os.path.relpath(os.path.join(support_dir, 'ivy'), self.real_build_root), force=True)
+    bootstrap_option_values = OptionsBootstrapper().get_bootstrap_options().for_global_scope()
+    self.set_bootstrap_options(bootstrap_option_values)
+    safe_mkdir(os.path.join(bootstrap_option_values.pants_supportdir, 'ivy'))
+    settings_file = os.path.join(bootstrap_option_values.pants_supportdir, 'ivy', 'ivysettings.xml')
+    if not os.path.exists(settings_file):
+      shutil.copy('build-support/ivy/ivysettings.xml',
+                  os.path.join(bootstrap_option_values.pants_supportdir, 'ivy'))
+    Bootstrapper.reset_instance()
+
+  def context(self, for_task_types=None, options=None, target_roots=None,
+              console_outstream=None, workspace=None, register_bootstrap_opts=True):
+    # Add in the bootstrapper task type, so its options get registered and set.
+    for_task_types = [self.bootstrap_task_type] + (for_task_types or [])
+    return super(JvmToolTaskTestBase, self).context(for_task_types=for_task_types,
+                                                    options=options,
+                                                    target_roots=target_roots,
+                                                    console_outstream=console_outstream,
+                                                    workspace=workspace,
+                                                    register_bootstrap_opts=register_bootstrap_opts)
 
   def prepare_execute(self, context, workdir):
     """Prepares a jvm tool using task for execution, ensuring any required jvm tools are

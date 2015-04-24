@@ -5,9 +5,7 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 -->
 
 <ivysettings>
-  <property name="root.dir" value="${ivy.settings.dir}/../.." override="false"/>
   <property name="ivy.cache.dir" value="${user.home}/.ivy2/pants" override="false"/>
-  <properties file="${root.dir}/build.properties" override="false"/>
 
   <settings defaultResolver="chain-repos"/>
 
@@ -18,12 +16,12 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
                usepoms="true"
                root="https://repo1.maven.org/maven2/"/>
 
-      <!-- This is just for twitter-hosted jvm tools - kill once they are published to maven
-           central. -->
-      <ibiblio name="maven.twttr.com-maven"
+      <!-- This is just for jvm tools used by Pants and not yet published to maven central.
+           Kill once they are published to maven central. -->
+      <ibiblio name="pantsbuild-maven-repo"
                m2compatible="true"
                usepoms="true"
-               root="http://maven.twttr.com/"/>
+               root="https://dl.bintray.com/pantsbuild/maven/"/>
     </chain>
   </macrodef>
 
@@ -44,6 +42,12 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 
       <!-- Fall back to local repositories
 
+           The <filesystem> entries below are examples of how you can have ivy read from your
+           local maven or sbt repos, primarily for getting -SNAPSHOTs to work when working
+           with two different build systems.  If you don't need this feature, you might be
+           better off leaving them commented out.  They can cause problems when your local
+           repository diverges from remote repositories.
+
            NB: there is deep ivy magic working here and many stars must align to get -SNAPSHOTs
            picked up as they change:
            1.) A filesystem resolver must be used (as opposed to an ibiblio resolver with a file
@@ -57,16 +61,20 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
       -->
 
       <!-- sbt standard -->
+      <!--
       <filesystem name="local.sbt" m2compatible="false" local="true" checkmodified="true">
         <ivy pattern="${sbt.repo.dir}/${sbt.repo.pom}"/>
         <artifact pattern="${sbt.repo.dir}/${sbt.repo.artifact}"/>
       </filesystem>
+      -->
 
       <!-- mvn standard -->
+      <!--
       <filesystem name="local.m2" m2compatible="true" local="true" checkmodified="true">
         <ivy pattern="${m2.repo.dir}/${m2.repo.pom}"/>
         <artifact pattern="${m2.repo.dir}/${m2.repo.artifact}"/>
       </filesystem>
+      -->
     </chain>
   </resolvers>
 
