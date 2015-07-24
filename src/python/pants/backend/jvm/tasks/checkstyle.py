@@ -10,11 +10,12 @@ import os
 from twitter.common.collections import OrderedSet
 
 from pants.backend.jvm.tasks.nailgun_task import NailgunTask
+from pants.base.cache_manager import VersionedTargetSet
 from pants.base.exceptions import TaskError
 from pants.base.target import Target
 from pants.option.options import Options
 from pants.process.xargs import Xargs
-from pants.util.dirutil import safe_open
+from pants.util.dirutil import safe_open, touch
 
 
 class Checkstyle(NailgunTask):
@@ -28,16 +29,18 @@ class Checkstyle(NailgunTask):
   @classmethod
   def register_options(cls, register):
     super(Checkstyle, cls).register_options(register)
-    register('--skip', action='store_true', help='Skip checkstyle.')
-    register('--configuration', help='Path to the checkstyle configuration file.')
-    register('--properties', type=Options.dict, default={},
+    register('--skip', action='store_true', fingerprint=True,
+             help='Skip checkstyle.')
+    register('--configuration', type=Options.file, fingerprint=True,
+             help='Path to the checkstyle configuration file.')
+    register('--properties', type=Options.dict, default={}, fingerprint=True,
              help='Dictionary of property mappings to use for checkstyle.properties.')
     register('--confs', default=['default'],
              help='One or more ivy configurations to resolve for this target. This parameter is '
                   'not intended for general use. ')
     register('--jvm-options', action='append', metavar='<option>...', advanced=True,
              help='Run checkstyle with these extra jvm options.')
-    cls.register_jvm_tool(register, 'checkstyle')
+    cls.register_jvm_tool(register, 'checkstyle', fingerprint=True)
 
   @classmethod
   def prepare(cls, options, round_manager):
@@ -49,14 +52,16 @@ class Checkstyle(NailgunTask):
             target.has_sources(self._JAVA_SOURCE_EXTENSION) and
             (not target.is_synthetic))
 
+  @property
+  def cache_target_dirs(self):
+    return True
+
   def execute(self):
     if self.get_options().skip:
       return
     targets = self.context.targets(self._is_checked)
     with self.invalidated(targets) as invalidation_check:
-      invalid_targets = []
-      for vt in invalidation_check.invalid_vts:
-        invalid_targets.extend(vt.targets)
+      invalid_targets = [vt.target for vt in invalidation_check.invalid_vts]
       sources = self.calculate_sources(invalid_targets)
       if sources:
         result = self.checkstyle(targets, sources)
