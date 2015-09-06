@@ -70,3 +70,13 @@ jar_library(name = 'scrooge-linter',
             dependencies = [
               '3rdparty:thrift',
             ])
+
+jar_library(name = 'wire-compiler',
+  jars = [
+    jar(org='com.squareup.wire', name='wire-compiler', rev='2.0.0-BETA4')
+  ])
+
+jar_library(name = 'wire-runtime',
+  jars = [
+    jar(org='com.squareup.wire', name='wire-runtime', rev='2.0.0-BETA4')
+  ])

@@ -9,5 +9,5 @@ java_wire_library(name='temperature',
   # - wire 2.x, the compiler expects the service_factory interface.
   # To switch between versions of wire you will also need to edit the
   # //:wire-compiler and //:wire-runtime targets in BUILD.tools
-  service_writer='com.squareup.wire.SimpleServiceWriter',
+  service_factory='com.squareup.wire.SimpleServiceFactory',
 )
