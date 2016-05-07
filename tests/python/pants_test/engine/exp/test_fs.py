@@ -10,6 +10,8 @@ import unittest
 from abc import abstractmethod
 from contextlib import contextmanager
 
+import pytest
+
 from pants.base.scm_project_tree import ScmProjectTree
 from pants.engine.exp.fs import (Dir, DirectoryListing, Dirs, FileContent, Files, Link, Path,
                                  PathGlobs, ReadLink, Stat, Stats)
@@ -22,6 +24,7 @@ from pants_test.testutils.git_util import MIN_REQUIRED_GIT_VERSION, git_version,
 class FSTestBase(SchedulerTestBase, AbstractClass):
 
   _original_src = os.path.join(os.path.dirname(__file__), 'examples/fs_test')
+  _complex_src = os.path.join(os.path.dirname(__file__), 'examples/fs_test2')
 
   @abstractmethod
   @contextmanager
@@ -34,6 +37,12 @@ class FSTestBase(SchedulerTestBase, AbstractClass):
 
   def assert_walk(self, ftype, filespecs, files):
     with self.mk_project_tree(self._original_src) as project_tree:
+      scheduler, storage = self.mk_scheduler(project_tree=project_tree)
+      result = self.execute(scheduler, storage, Stat, self.specs(ftype, '', *filespecs))[0]
+      self.assertEquals(set(files), set([p.path for p in result]))
+
+  def assert_walk_complex(self, ftype, filespecs, files):
+    with self.mk_project_tree(self._complex_src) as project_tree:
       scheduler, storage = self.mk_scheduler(project_tree=project_tree)
       result = self.execute(scheduler, storage, Stat, self.specs(ftype, '', *filespecs))[0]
       self.assertEquals(set(files), set([p.path for p in result]))
@@ -87,6 +96,11 @@ class FSTestBase(SchedulerTestBase, AbstractClass):
     self.assert_walk(Files, ['*.txt', '**/*.txt'], ['a/3.txt', 'a/b/1.txt', '4.txt'])
     self.assert_walk(Files, ['*', '**/*'], ['a/3.txt', 'a/b/1.txt', '4.txt', 'a/b/2'])
     self.assert_walk(Files, ['**/*.zzz'], [])
+
+  @pytest.mark.xfail
+  def test_walk_recursive_complex(self):
+    self.assert_walk_complex(Files, ['**/*IT.java'], ['src/java/BarFooIT.java', 'src/java/FooBarIT.java'])
+    self.assert_walk_complex(Files, ['**/Foo*IT.java'], ['src/java/FooBarIT.java'])
 
   def test_walk_recursive_directory(self):
     self.assert_walk(Dirs, ['*'], ['a', 'a/b'])
