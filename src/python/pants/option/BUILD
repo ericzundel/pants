@@ -3,9 +3,10 @@
 
 python_library(
   name='option',
-  sources=globs('*.py'),
+  sources=globs('*.py', exclude=['config_list_parser_tab.py']),
   dependencies=[
     '3rdparty/python:ansicolors',
+    '3rdparty/python:ply',
     '3rdparty/python:six',
     '3rdparty/python/twitter/commons:twitter.common.collections',
     'src/python/pants/base:build_environment',
@@ -13,7 +14,19 @@ python_library(
     'src/python/pants/util:eval',
     'src/python/pants/util:meta',
     'src/python/pants/util:strutil',
+    # TODO(zundel): Figure out how to include this file in the build but exclude from style checking
+    #':config_list_parser_tab'
   ]
+)
+
+# This is a generated file that gets created by the ply library.
+# Its a separate target so we can exclude it from the python checkstyle step
+python_library(
+  name='config_list_parser_tab',
+  sources=['config_list_parser_tab.py'],
+  dependencies=[
+    '3rdparty/python:ply',
+  ],
 )
 
 target(

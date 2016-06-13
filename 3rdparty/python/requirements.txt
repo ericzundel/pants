@@ -14,6 +14,7 @@ pex==1.1.10
 psutil==3.1.1
 pyflakes==1.1.0
 Pygments==1.4
+ply==3.8
 pystache==0.5.3
 pytest-cov>=1.8,<1.9
 pytest>=2.6,<2.7
