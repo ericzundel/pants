@@ -14,7 +14,7 @@ java_library(name='make_it_rain',
   description="""
 This target is useful to be able to compile the referenced thrift targets,
 or to publish them. Try running the following to test it out:
-$ yes | ./pants publish.jar --local=/tmp/m2 --no-dryrun \\
+$ ./pants publish.jar --no-prompt --local=/tmp/m2 --no-dryrun \\
                             examples/src/java/org/pantsbuild/example/make_it_rain
 """
 )
