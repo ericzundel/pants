@@ -17,9 +17,9 @@ class SdistBuilder(object):
   class SetupError(Error): pass
 
   @classmethod
-  def build(cls, setup_root, target, interpreter=None):
+  def build(cls, setup_root, target, interpreter=None, distdir='dist'):
     packager = Packager(setup_root, interpreter=interpreter,
-        install_dir=os.path.join(setup_root, 'dist'))
+        install_dir=os.path.join(setup_root, distdir))
     try:
       return packager.sdist()
     except Packager.InstallFailure as e:
