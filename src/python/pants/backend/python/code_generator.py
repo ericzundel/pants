@@ -90,7 +90,8 @@ class CodeGenerator(object):
   def package_root(self):
     return os.path.join(self.sdist_root, self.package_dir)
 
-  def build(self, interpreter=None):
+  def build(self, interpreter=None, distdir='dist'):
     self.generate()
     self.dump_setup_py()
-    return SdistBuilder.build(self.sdist_root, self.target, interpreter=interpreter)
+    return SdistBuilder.build(self.sdist_root, self.target, interpreter=interpreter,
+      distdir)
